@@ -103,5 +103,5 @@ go.work
 # ENV file
 .env
 
-# Intellij folder
+# IntelliJ folder
 .idea
