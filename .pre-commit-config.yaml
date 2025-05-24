@@ -1,0 +1,17 @@
+repos:
+    - repo: https://github.com/pre-commit/pre-commit-hooks
+      rev: v5.0.0
+      hooks:
+          - id: end-of-file-fixer
+          - id: trailing-whitespace
+          - id: check-yaml
+
+    - repo: https://github.com/dnephin/pre-commit-golang
+      rev: v0.5.1
+      hooks:
+          - id: go-fmt             # runs gofmt
+          - id: go-imports         # runs goimports
+          - id: go-mod-tidy        # runs go mod tidy
+          - id: go-unit-tests      # runs go test -tags=unit
+          - id: golangci-lint      # runs golangci-lint run ./...
+            args: [--timeout=5m]
