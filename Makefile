@@ -1,5 +1,5 @@
 run:
-	go run cmd/main.go
+	go run cmd/cli/main.go
 
 test:
 	go test ./... -v
