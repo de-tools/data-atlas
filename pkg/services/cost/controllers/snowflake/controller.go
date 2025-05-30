@@ -63,9 +63,9 @@ func NewSnowflakeController(analyzers ...cost.Analyzer) (cost.Controller, error)
 
 // EstimateResourceCost estimates the cost for a specific resource type over the specified duration
 func (c *controller) EstimateResourceCost(resourceType string, days int) (*domain.Report, error) {
-	analyzer, exists := c.analyzers[resourceType]
-	if !exists {
-		return nil, fmt.Errorf("unsupported resource type: %s", resourceType)
+	analyzer, err := c.getAnalyzer(resourceType)
+	if err != nil {
+		return nil, err
 	}
 
 	costs, err := analyzer.GenerateReport(days)
@@ -76,6 +76,15 @@ func (c *controller) EstimateResourceCost(resourceType string, days int) (*domai
 	return costs, nil
 }
 
+func (c *controller) GetRawResourceCost(resourceType string, days int) ([]domain.ResourceCost, error) {
+	analyzer, err := c.getAnalyzer(resourceType)
+	if err != nil {
+		return nil, err
+	}
+
+	return analyzer.CollectUsage(days)
+}
+
 // GetSupportedResources returns a list of supported resource types
 func (c *controller) GetSupportedResources() []string {
 	resources := make([]string, 0, len(c.analyzers))
@@ -83,4 +92,12 @@ func (c *controller) GetSupportedResources() []string {
 		resources = append(resources, resourceType)
 	}
 	return resources
+}
+
+func (c *controller) getAnalyzer(resourceType string) (cost.Analyzer, error) {
+	analyzer, exists := c.analyzers[resourceType]
+	if !exists {
+		return nil, fmt.Errorf("unsupported resource type: %s", resourceType)
+	}
+	return analyzer, nil
 }

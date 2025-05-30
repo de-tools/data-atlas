@@ -12,6 +12,7 @@ type Analyzer interface {
 type Controller interface {
 	// EstimateResourceCost estimates the cost for a specific resource type over the specified duration in days
 	EstimateResourceCost(resourceType string, days int) (*domain.Report, error)
+	GetRawResourceCost(resourceType string, days int) ([]domain.ResourceCost, error)
 	// GetSupportedResources returns a list of supported resource types
 	GetSupportedResources() []string
 }
