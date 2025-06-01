@@ -44,7 +44,8 @@ func (aa *applicationAnalyzer) CollectUsage(days int) ([]domain.ResourceCost, er
 
 	var costs []domain.ResourceCost
 	for rows.Next() {
-		var appID, appName, globalName string
+		var appID, appName string
+		var globalName *string
 		var credits float64
 		var storageBytes int64
 		var creditsBreakdown, storageBreakdown string
@@ -64,7 +65,7 @@ func (aa *applicationAnalyzer) CollectUsage(days int) ([]domain.ResourceCost, er
 				Name:        appName,
 				Description: fmt.Sprintf("Snowflake Application %s (%s)", appName, globalName),
 				Tags: map[string]string{
-					"global_name": globalName,
+					"global_name": strPtrToStr(globalName),
 				},
 				Metadata: struct {
 					ID        string
@@ -205,4 +206,11 @@ func (aa *applicationAnalyzer) GenerateReport(days int) (*domain.Report, error) 
 	}
 
 	return report, nil
+}
+
+func strPtrToStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

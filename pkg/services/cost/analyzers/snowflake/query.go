@@ -112,61 +112,122 @@ func (qa *queryAnalyzer) GenerateReport(days int) (*domain.Report, error) {
 		Currency: "USD",
 	}
 
-	// Group queries by warehouse for better organization
-	warehouseQueries := make(map[string][]domain.ResourceCost)
+	// Group by query ID
+	querySummary := make(map[string]*struct {
+		warehouse      string
+		queryText      string
+		totalCredits   float64
+		totalCost      float64
+		execTime       float64
+		bytesScanned   int64
+		executionCount int
+		firstSeen      time.Time
+		lastSeen       time.Time
+	})
+
 	for _, cost := range costs {
-		warehouse := cost.Resource.Tags["warehouse"]
-		warehouseQueries[warehouse] = append(warehouseQueries[warehouse], cost)
+		queryID := cost.Resource.Metadata.ID
+		summary, exists := querySummary[queryID]
+		if !exists {
+			summary = &struct {
+				warehouse      string
+				queryText      string
+				totalCredits   float64
+				totalCost      float64
+				execTime       float64
+				bytesScanned   int64
+				executionCount int
+				firstSeen      time.Time
+				lastSeen       time.Time
+			}{
+				warehouse:      cost.Resource.Tags["warehouse"],
+				queryText:      cost.Resource.Description,
+				firstSeen:      cost.StartTime,
+				lastSeen:       cost.StartTime,
+				executionCount: 0,
+			}
+			querySummary[queryID] = summary
+		}
+
+		duration := cost.EndTime.Sub(cost.StartTime)
+		summary.execTime += duration.Seconds()
+		summary.executionCount++
+
+		if cost.StartTime.Before(summary.firstSeen) {
+			summary.firstSeen = cost.StartTime
+		}
+		if cost.StartTime.After(summary.lastSeen) {
+			summary.lastSeen = cost.StartTime
+		}
+
+		for _, component := range cost.Costs {
+			summary.totalCost += component.TotalAmount
+			if component.Type == "compute" {
+				summary.totalCredits += component.Value
+			}
+		}
 	}
 
-	for warehouse, queries := range warehouseQueries {
+	// Create a section for each query
+	for queryID, summary := range querySummary {
 		section := domain.ReportSection{
-			Title: fmt.Sprintf("Warehouse: %s", warehouse),
+			Title: fmt.Sprintf("Query: %s (Warehouse: %s)", queryID, summary.warehouse),
 			Summary: map[string]interface{}{
-				"Query Count": len(queries),
+				"Warehouse":     summary.warehouse,
+				"Executions":    summary.executionCount,
+				"Query":         summary.queryText,
+				"Total Cost":    summary.totalCost,
+				"Total Credits": summary.totalCredits,
+				"Total Runtime": summary.execTime,
+				"First Run":     summary.firstSeen.Format("2006-01-02 15:04:05"),
+				"Last Run":      summary.lastSeen.Format("2006-01-02 15:04:05"),
+			},
+			Details: []domain.ReportDetail{
+				{
+					Name:        "Execution Count",
+					Value:       summary.executionCount,
+					Unit:        "times",
+					Description: "Number of executions",
+				},
+				{
+					Name:        "Total Runtime",
+					Value:       summary.execTime,
+					Unit:        "seconds",
+					Description: "Total execution time",
+				},
+				{
+					Name:        "Average Runtime",
+					Value:       summary.execTime / float64(summary.executionCount),
+					Unit:        "seconds",
+					Description: "Average execution time per run",
+				},
+				{
+					Name:        "Credits Used",
+					Value:       summary.totalCredits,
+					Unit:        "credits",
+					Description: "Total compute credits",
+				},
+				{
+					Name:        "Cost",
+					Value:       summary.totalCost,
+					Unit:        "USD",
+					Description: "Total cost",
+				},
+				{
+					Name:        "Cost per Execution",
+					Value:       summary.totalCost / float64(summary.executionCount),
+					Unit:        "USD",
+					Description: "Average cost per execution",
+				},
 			},
 			Metadata: map[string]interface{}{
-				"Warehouse": warehouse,
+				"QueryID":    queryID,
+				"Warehouse":  summary.warehouse,
+				"Executions": summary.executionCount,
 			},
 		}
 
-		var warehouseTotalCost float64
-		var warehouseTotalCredits float64
-
-		for _, query := range queries {
-			queryDetails := []domain.ReportDetail{
-				{
-					Name:        "Query ID",
-					Value:       query.Resource.Metadata.ID,
-					Description: query.Resource.Description,
-				},
-				{
-					Name:        "Execution Time",
-					Value:       query.EndTime.Sub(query.StartTime).Seconds(),
-					Unit:        "seconds",
-					Description: "Query execution duration",
-				},
-			}
-
-			for _, component := range query.Costs {
-				warehouseTotalCost += component.TotalAmount
-				warehouseTotalCredits += component.Value
-
-				queryDetails = append(queryDetails, domain.ReportDetail{
-					Name:        component.Type,
-					Value:       component.Value,
-					Unit:        component.Unit,
-					Description: component.Description,
-				})
-			}
-
-			section.Details = append(section.Details, queryDetails...)
-		}
-
-		section.Summary["Total Cost"] = warehouseTotalCost
-		section.Summary["Total Credits"] = warehouseTotalCredits
-		report.TotalAmount += warehouseTotalCost
-
+		report.TotalAmount += summary.totalCost
 		report.Sections = append(report.Sections, section)
 	}
 
