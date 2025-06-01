@@ -9,16 +9,11 @@ import (
 )
 
 func main() {
-	registry := cost.NewRegistry()
-	err := registry.Register("snowflake", snowflake.ControllerFactory)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to register snowflake platform: %v\n", err)
-		os.Exit(1)
-	}
-
 	cli := terminal.NewCLI(terminal.Options{
-		Registry: registry,
-		Output:   os.Stdout,
+		Registry: cost.NewRegistry(map[string]cost.ControllerFactory{
+			"snowflake": snowflake.ControllerFactory,
+		}),
+		Output: os.Stdout,
 	})
 
 	if err := cli.Execute(); err != nil {
