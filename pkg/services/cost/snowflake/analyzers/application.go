@@ -1,10 +1,12 @@
-package snowflake
+package analyzers
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
-	"github.com/de-tools/data-atlas/pkg/models/domain"
 	"time"
+
+	"github.com/de-tools/data-atlas/pkg/models/domain"
 )
 
 type applicationAnalyzer struct {
@@ -21,7 +23,7 @@ func (aa *applicationAnalyzer) GetResourceType() string {
 	return "application"
 }
 
-func (aa *applicationAnalyzer) CollectUsage(days int) ([]domain.ResourceCost, error) {
+func (aa *applicationAnalyzer) CollectUsage(ctx context.Context, days int) ([]domain.ResourceCost, error) {
 	query := `
 		SELECT 
 			application_id,
@@ -102,8 +104,8 @@ func (aa *applicationAnalyzer) CollectUsage(days int) ([]domain.ResourceCost, er
 	return costs, nil
 }
 
-func (aa *applicationAnalyzer) GenerateReport(days int) (*domain.Report, error) {
-	costs, err := aa.CollectUsage(days)
+func (aa *applicationAnalyzer) GenerateReport(ctx context.Context, days int) (*domain.Report, error) {
+	costs, err := aa.CollectUsage(ctx, days)
 	if err != nil {
 		return nil, err
 	}
