@@ -1,13 +1,15 @@
 package snowflake
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"log"
+
 	"github.com/de-tools/data-atlas/pkg/models/domain"
 	"github.com/de-tools/data-atlas/pkg/services/cost"
-	"github.com/de-tools/data-atlas/pkg/services/cost/analyzers/snowflake"
+	"github.com/de-tools/data-atlas/pkg/services/cost/snowflake/analyzers"
 	sf "github.com/snowflakedb/gosnowflake"
-	"log"
 )
 
 type controller struct {
@@ -15,7 +17,7 @@ type controller struct {
 }
 
 // ControllerFactory creates a new Snowflake controller from a config file
-func ControllerFactory(configPath string) (cost.Controller, error) {
+func ControllerFactory(_ context.Context, configPath string) (cost.Controller, error) {
 	// Load configuration
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
@@ -33,10 +35,10 @@ func ControllerFactory(configPath string) (cost.Controller, error) {
 	}
 
 	return NewSnowflakeController(
-		snowflake.NewWarehouseAnalyzer(db),
-		snowflake.NewQueryAnalyzer(db, 50),
-		snowflake.NewApplicationAnalyzer(db),
-		snowflake.NewBlockStorageAnalyzer(db),
+		analyzers.NewWarehouseAnalyzer(db),
+		analyzers.NewQueryAnalyzer(db, 50),
+		analyzers.NewApplicationAnalyzer(db),
+		analyzers.NewBlockStorageAnalyzer(db),
 	)
 }
 
@@ -62,13 +64,13 @@ func NewSnowflakeController(analyzers ...cost.Analyzer) (cost.Controller, error)
 }
 
 // EstimateResourceCost estimates the cost for a specific resource type over the specified duration
-func (c *controller) EstimateResourceCost(resourceType string, days int) (*domain.Report, error) {
+func (c *controller) EstimateResourceCost(ctx context.Context, resourceType string, days int) (*domain.Report, error) {
 	analyzer, err := c.getAnalyzer(resourceType)
 	if err != nil {
 		return nil, err
 	}
 
-	costs, err := analyzer.GenerateReport(days)
+	costs, err := analyzer.GenerateReport(ctx, days)
 	if err != nil {
 		return nil, fmt.Errorf("failed to collect usage for %s: %w", resourceType, err)
 	}
@@ -76,13 +78,17 @@ func (c *controller) EstimateResourceCost(resourceType string, days int) (*domai
 	return costs, nil
 }
 
-func (c *controller) GetRawResourceCost(resourceType string, days int) ([]domain.ResourceCost, error) {
+func (c *controller) GetRawResourceCost(
+	ctx context.Context,
+	resourceType string,
+	days int,
+) ([]domain.ResourceCost, error) {
 	analyzer, err := c.getAnalyzer(resourceType)
 	if err != nil {
 		return nil, err
 	}
 
-	return analyzer.CollectUsage(days)
+	return analyzer.CollectUsage(ctx, days)
 }
 
 // GetSupportedResources returns a list of supported resource types
