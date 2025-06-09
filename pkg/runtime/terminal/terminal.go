@@ -2,10 +2,11 @@ package terminal
 
 import (
 	"fmt"
-	"github.com/de-tools/data-atlas/pkg/services/cost"
-	"github.com/spf13/cobra"
 	"io"
 	"os"
+
+	"github.com/de-tools/data-atlas/pkg/services/cost"
+	"github.com/spf13/cobra"
 )
 
 // CLI represents the command-line interface

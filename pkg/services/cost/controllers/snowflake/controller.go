@@ -3,11 +3,12 @@ package snowflake
 import (
 	"database/sql"
 	"fmt"
+	"log"
+
 	"github.com/de-tools/data-atlas/pkg/models/domain"
 	"github.com/de-tools/data-atlas/pkg/services/cost"
 	"github.com/de-tools/data-atlas/pkg/services/cost/analyzers/snowflake"
 	sf "github.com/snowflakedb/gosnowflake"
-	"log"
 )
 
 type controller struct {

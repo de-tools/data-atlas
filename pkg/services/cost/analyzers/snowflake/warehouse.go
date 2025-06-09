@@ -3,8 +3,9 @@ package snowflake
 import (
 	"database/sql"
 	"fmt"
-	"github.com/de-tools/data-atlas/pkg/models/domain"
 	"time"
+
+	"github.com/de-tools/data-atlas/pkg/models/domain"
 )
 
 type warehouseAnalyzer struct {
@@ -24,7 +25,7 @@ func (wa *warehouseAnalyzer) GetResourceType() string {
 func (wa *warehouseAnalyzer) CollectUsage(days int) ([]domain.ResourceCost, error) {
 	//language=SQL
 	query := `
-		SELECT 
+		SELECT
 			warehouse_name,
 			credits_used,
 			start_time,
@@ -37,6 +38,7 @@ func (wa *warehouseAnalyzer) CollectUsage(days int) ([]domain.ResourceCost, erro
 	if err != nil {
 		return nil, fmt.Errorf("warehouse usage query failed: %w", err)
 	}
+
 	defer rows.Close()
 
 	var usages []domain.ResourceCost

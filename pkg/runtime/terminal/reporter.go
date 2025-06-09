@@ -2,11 +2,12 @@ package terminal
 
 import (
 	"fmt"
-	"github.com/de-tools/data-atlas/pkg/models/domain"
 	"io"
 	"os"
 	"strings"
 	"text/template"
+
+	"github.com/de-tools/data-atlas/pkg/models/domain"
 )
 
 type TableConfig struct {

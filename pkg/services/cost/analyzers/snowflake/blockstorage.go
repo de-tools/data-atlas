@@ -3,8 +3,9 @@ package snowflake
 import (
 	"database/sql"
 	"fmt"
-	"github.com/de-tools/data-atlas/pkg/models/domain"
 	"time"
+
+	"github.com/de-tools/data-atlas/pkg/models/domain"
 )
 
 type blockStorageAnalyzer struct {
@@ -23,7 +24,7 @@ func (ba *blockStorageAnalyzer) GetResourceType() string {
 
 func (ba *blockStorageAnalyzer) CollectUsage(days int) ([]domain.ResourceCost, error) {
 	query := `
-		SELECT 
+		SELECT
 			additional_iops,
 			additional_throughput,
 			bytes,
