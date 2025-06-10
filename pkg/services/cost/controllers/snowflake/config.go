@@ -2,6 +2,7 @@ package snowflake
 
 import (
 	"fmt"
+
 	"github.com/snowflakedb/gosnowflake"
 	"github.com/spf13/viper"
 )

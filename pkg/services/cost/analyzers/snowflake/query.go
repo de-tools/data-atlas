@@ -3,8 +3,9 @@ package snowflake
 import (
 	"database/sql"
 	"fmt"
-	"github.com/de-tools/data-atlas/pkg/models/domain"
 	"time"
+
+	"github.com/de-tools/data-atlas/pkg/models/domain"
 )
 
 type queryAnalyzer struct {
@@ -25,7 +26,7 @@ func (qa *queryAnalyzer) GetResourceType() string {
 
 func (qa *queryAnalyzer) CollectUsage(days int) ([]domain.ResourceCost, error) {
 	query := `
-		SELECT 
+		SELECT
 			query_id,
 			warehouse_name,
 			execution_time,
