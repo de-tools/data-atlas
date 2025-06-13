@@ -43,7 +43,7 @@ func (a *rdsAnalyzer) CollectUsage(ctx context.Context, days int) ([]domain.Reso
 				Platform:    "AWS",
 				Service:     "RDS",
 				Name:        aws.ToString(instance.DBInstanceIdentifier),
-				Description: fmt.Sprintf("RDS Instance (%s, %s)", instance.DBInstanceClass, instance.Engine),
+				Description: fmt.Sprintf("RDS Instance (%s, %s)", *instance.DBInstanceClass, *instance.Engine),
 				Metadata: struct {
 					ID        string
 					AccountID string
@@ -62,7 +62,7 @@ func (a *rdsAnalyzer) CollectUsage(ctx context.Context, days int) ([]domain.Reso
 					Rate:        hourlyRate,
 					TotalAmount: hourlyRate * float64(24*days),
 					Currency:    "USD",
-					Description: fmt.Sprintf("Instance costs for %s", instance.DBInstanceClass),
+					Description: fmt.Sprintf("Instance costs for %s", *instance.DBInstanceClass),
 				},
 				{
 					Type:        "storage",

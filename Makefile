@@ -7,6 +7,9 @@ build:
 test:
 	go test ./... -v
 
+itest:
+	go test -v -tags=integration ./...
+
 install-lint:
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
 
