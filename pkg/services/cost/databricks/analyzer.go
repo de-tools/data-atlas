@@ -1,6 +1,7 @@
 package databricks
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -35,7 +36,7 @@ func (a *DatabricksAnalyzer) GetResourceType() string {
 	return a.resourceType
 }
 
-func (a *DatabricksAnalyzer) CollectUsage(days int) ([]domain.ResourceCost, error) {
+func (a *DatabricksAnalyzer) CollectUsage(_ context.Context, days int) ([]domain.ResourceCost, error) {
 	query := fmt.Sprintf(`
 		SELECT
 		  usage_metadata.%[1]s    AS id,
@@ -95,8 +96,8 @@ func (a *DatabricksAnalyzer) CollectUsage(days int) ([]domain.ResourceCost, erro
 	return out, nil
 }
 
-func (a *DatabricksAnalyzer) GenerateReport(days int) (*domain.Report, error) {
-	usages, err := a.CollectUsage(days)
+func (a *DatabricksAnalyzer) GenerateReport(ctx context.Context, days int) (*domain.Report, error) {
+	usages, err := a.CollectUsage(ctx, days)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,7 @@
 package databricks
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -9,14 +10,13 @@ import (
 	_ "github.com/databricks/databricks-sql-go"
 	"github.com/de-tools/data-atlas/pkg/models/domain"
 	"github.com/de-tools/data-atlas/pkg/services/cost"
-	dba "github.com/de-tools/data-atlas/pkg/services/cost/analyzers/databricks"
 )
 
 type controller struct {
 	analyzers map[string]cost.Analyzer
 }
 
-func ControllerFactory(configPath string) (cost.Controller, error) {
+func ControllerFactory(_ context.Context, configPath string) (cost.Controller, error) {
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
@@ -41,9 +41,9 @@ func ControllerFactory(configPath string) (cost.Controller, error) {
 	}
 
 	return NewDatabricksController(
-		dba.NewDatabricksAnalyzer(db, "warehouse_id", "sqlwarehouse", "SQL Warehouse", 0.22),
-		dba.NewDatabricksAnalyzer(db, "cluster_id", "cluster", "Cluster", 0.22),
-		dba.NewDatabricksAnalyzer(db, "job_id", "job", "Job", 0.22),
+		NewDatabricksAnalyzer(db, "warehouse_id", "sqlwarehouse", "SQL Warehouse", 0.22),
+		NewDatabricksAnalyzer(db, "cluster_id", "cluster", "Cluster", 0.22),
+		NewDatabricksAnalyzer(db, "job_id", "job", "Job", 0.22),
 	)
 }
 
@@ -62,20 +62,20 @@ func NewDatabricksController(analyzers ...cost.Analyzer) (cost.Controller, error
 	return c, nil
 }
 
-func (c *controller) EstimateResourceCost(resourceType string, days int) (*domain.Report, error) {
+func (c *controller) EstimateResourceCost(ctx context.Context, resourceType string, days int) (*domain.Report, error) {
 	an, err := c.getAnalyzer(resourceType)
 	if err != nil {
 		return nil, err
 	}
-	return an.GenerateReport(days)
+	return an.GenerateReport(ctx, days)
 }
 
-func (c *controller) GetRawResourceCost(resourceType string, days int) ([]domain.ResourceCost, error) {
+func (c *controller) GetRawResourceCost(ctx context.Context, resourceType string, days int) ([]domain.ResourceCost, error) {
 	an, err := c.getAnalyzer(resourceType)
 	if err != nil {
 		return nil, err
 	}
-	return an.CollectUsage(days)
+	return an.CollectUsage(ctx, days)
 }
 
 func (c *controller) GetSupportedResources() []string {

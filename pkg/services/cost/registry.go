@@ -1,18 +1,19 @@
 package cost
 
 import (
+	"context"
 	"fmt"
 )
 
 // ControllerFactory is a function type that creates a Controller from a config path
-type ControllerFactory func(configPath string) (Controller, error)
+type ControllerFactory func(ctx context.Context, configPath string) (Controller, error)
 
 // Registry manages platform controller factories
 type Registry interface {
 	// Create instantiates a controller for the specified platform using the provided config
-	Create(platform, configPath string) (Controller, error)
+	Create(ctx context.Context, platform, configPath string) (Controller, error)
 	// ListPlatforms returns a list of registered platforms
-	ListPlatforms() []string
+	ListPlatforms(ctx context.Context) []string
 }
 
 type registry struct {
@@ -26,17 +27,17 @@ func NewRegistry(factories map[string]ControllerFactory) Registry {
 	}
 }
 
-func (r *registry) Create(platform, configPath string) (Controller, error) {
+func (r *registry) Create(ctx context.Context, platform, configPath string) (Controller, error) {
 	factory, exists := r.factories[platform]
 
 	if !exists {
 		return nil, fmt.Errorf("platform %q is not registered", platform)
 	}
 
-	return factory(configPath)
+	return factory(ctx, configPath)
 }
 
-func (r *registry) ListPlatforms() []string {
+func (r *registry) ListPlatforms(_ context.Context) []string {
 	platforms := make([]string, 0, len(r.factories))
 	for platform := range r.factories {
 		platforms = append(platforms, platform)
