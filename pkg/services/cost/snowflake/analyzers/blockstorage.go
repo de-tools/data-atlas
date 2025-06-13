@@ -1,6 +1,7 @@
-package snowflake
+package analyzers
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -22,7 +23,7 @@ func (ba *blockStorageAnalyzer) GetResourceType() string {
 	return "block_storage"
 }
 
-func (ba *blockStorageAnalyzer) CollectUsage(days int) ([]domain.ResourceCost, error) {
+func (ba *blockStorageAnalyzer) CollectUsage(_ context.Context, days int) ([]domain.ResourceCost, error) {
 	query := `
 		SELECT
 			additional_iops,
@@ -108,8 +109,8 @@ func (ba *blockStorageAnalyzer) CollectUsage(days int) ([]domain.ResourceCost, e
 	return costs, nil
 }
 
-func (ba *blockStorageAnalyzer) GenerateReport(days int) (*domain.Report, error) {
-	costs, err := ba.CollectUsage(days)
+func (ba *blockStorageAnalyzer) GenerateReport(ctx context.Context, days int) (*domain.Report, error) {
+	costs, err := ba.CollectUsage(ctx, days)
 	if err != nil {
 		return nil, err
 	}

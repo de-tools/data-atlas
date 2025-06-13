@@ -1,6 +1,7 @@
-package snowflake
+package analyzers
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -22,7 +23,7 @@ func (wa *warehouseAnalyzer) GetResourceType() string {
 	return "warehouse"
 }
 
-func (wa *warehouseAnalyzer) CollectUsage(days int) ([]domain.ResourceCost, error) {
+func (wa *warehouseAnalyzer) CollectUsage(_ context.Context, days int) ([]domain.ResourceCost, error) {
 	//language=SQL
 	query := `
 		SELECT
@@ -85,8 +86,8 @@ func (wa *warehouseAnalyzer) CollectUsage(days int) ([]domain.ResourceCost, erro
 	return usages, nil
 }
 
-func (wa *warehouseAnalyzer) GenerateReport(days int) (*domain.Report, error) {
-	usages, err := wa.CollectUsage(days)
+func (wa *warehouseAnalyzer) GenerateReport(ctx context.Context, days int) (*domain.Report, error) {
+	usages, err := wa.CollectUsage(ctx, days)
 	if err != nil {
 		return nil, err
 	}

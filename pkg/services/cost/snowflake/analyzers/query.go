@@ -1,6 +1,7 @@
-package snowflake
+package analyzers
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -24,7 +25,7 @@ func (qa *queryAnalyzer) GetResourceType() string {
 	return "query"
 }
 
-func (qa *queryAnalyzer) CollectUsage(days int) ([]domain.ResourceCost, error) {
+func (qa *queryAnalyzer) CollectUsage(_ context.Context, days int) ([]domain.ResourceCost, error) {
 	query := `
 		SELECT
 			query_id,
@@ -97,8 +98,8 @@ func (qa *queryAnalyzer) CollectUsage(days int) ([]domain.ResourceCost, error) {
 	return costs, nil
 }
 
-func (qa *queryAnalyzer) GenerateReport(days int) (*domain.Report, error) {
-	costs, err := qa.CollectUsage(days)
+func (qa *queryAnalyzer) GenerateReport(ctx context.Context, days int) (*domain.Report, error) {
+	costs, err := qa.CollectUsage(ctx, days)
 	if err != nil {
 		return nil, err
 	}

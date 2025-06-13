@@ -1,9 +1,11 @@
 package terminal
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/de-tools/data-atlas/pkg/services/cost"
 	"github.com/spf13/cobra"
@@ -84,7 +86,10 @@ func (cli *CLI) newAnalyzeCmd() *cobra.Command {
 }
 
 func (ac *analyzeCmd) run(cmd *cobra.Command, args []string) error {
-	ctrl, err := ac.registry.Create(ac.platform, ac.profilePath)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	ctrl, err := ac.registry.Create(ctx, ac.platform, ac.profilePath)
 	if err != nil {
 		return fmt.Errorf("failed to create a ctrl for platform: %s", ac.platform)
 	}
@@ -104,7 +109,7 @@ func (ac *analyzeCmd) run(cmd *cobra.Command, args []string) error {
 			ac.resourceType, ac.platform, supported)
 	}
 
-	report, err := ctrl.EstimateResourceCost(ac.resourceType, ac.duration)
+	report, err := ctrl.EstimateResourceCost(ctx, ac.resourceType, ac.duration)
 	if err != nil {
 		return fmt.Errorf("failed to estimate resource cost: %w", err)
 	}

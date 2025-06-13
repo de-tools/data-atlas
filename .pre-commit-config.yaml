@@ -13,5 +13,5 @@ repos:
           - id: go-imports         # runs goimports
           - id: go-mod-tidy        # runs go mod tidy
           - id: go-unit-tests      # runs go test -tags=unit
-          #- id: golangci-lint      # runs golangci-lint run ./...
-          #  args: [--timeout=5m]
+          - id: golangci-lint      # runs golangci-lint run ./...
+            args: [--timeout=5m]
