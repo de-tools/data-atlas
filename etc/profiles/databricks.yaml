@@ -1,0 +1,5 @@
+host: "workspace.cloud.databricks.com:443"
+token: "token"
+http_path: "/sql/1.0/warehouses/warehouse"
+catalog: "main"  # Optional
+schema: "default"    # Optional
