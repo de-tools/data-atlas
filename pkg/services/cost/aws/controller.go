@@ -1,4 +1,3 @@
-// pkg/services/cost/aws/controller.go
 package aws
 
 import (
