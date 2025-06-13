@@ -27,7 +27,7 @@ func (qa *queryAnalyzer) GetResourceType() string {
 
 func (qa *queryAnalyzer) CollectUsage(_ context.Context, days int) ([]domain.ResourceCost, error) {
 	query := `
-		SELECT 
+		SELECT
 			query_id,
 			warehouse_name,
 			execution_time,

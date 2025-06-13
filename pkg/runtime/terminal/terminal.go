@@ -3,12 +3,10 @@ package terminal
 import (
 	"context"
 	"fmt"
-	"io"
-	"os"
-	"time"
-
 	"github.com/de-tools/data-atlas/pkg/services/cost"
 	"github.com/spf13/cobra"
+	"io"
+	"os"
 )
 
 // CLI represents the command-line interface

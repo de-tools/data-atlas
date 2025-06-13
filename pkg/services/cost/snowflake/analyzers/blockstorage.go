@@ -25,7 +25,7 @@ func (ba *blockStorageAnalyzer) GetResourceType() string {
 
 func (ba *blockStorageAnalyzer) CollectUsage(_ context.Context, days int) ([]domain.ResourceCost, error) {
 	query := `
-		SELECT 
+		SELECT
 			additional_iops,
 			additional_throughput,
 			bytes,

@@ -25,7 +25,7 @@ func (aa *applicationAnalyzer) GetResourceType() string {
 
 func (aa *applicationAnalyzer) CollectUsage(ctx context.Context, days int) ([]domain.ResourceCost, error) {
 	query := `
-		SELECT 
+		SELECT
 			application_id,
 			application_name,
 			credits_used,
@@ -65,7 +65,7 @@ func (aa *applicationAnalyzer) CollectUsage(ctx context.Context, days int) ([]do
 				Platform:    "Snowflake",
 				Service:     "Application",
 				Name:        appName,
-				Description: fmt.Sprintf("Snowflake Application %s (%s)", appName, globalName),
+				Description: fmt.Sprintf("Snowflake Application %s (%s)", appName, *globalName),
 				Tags: map[string]string{
 					"global_name": strPtrToStr(globalName),
 				},

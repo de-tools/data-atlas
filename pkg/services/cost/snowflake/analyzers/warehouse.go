@@ -26,7 +26,7 @@ func (wa *warehouseAnalyzer) GetResourceType() string {
 func (wa *warehouseAnalyzer) CollectUsage(_ context.Context, days int) ([]domain.ResourceCost, error) {
 	//language=SQL
 	query := `
-		SELECT 
+		SELECT
 			warehouse_name,
 			credits_used,
 			start_time,
@@ -39,6 +39,7 @@ func (wa *warehouseAnalyzer) CollectUsage(_ context.Context, days int) ([]domain
 	if err != nil {
 		return nil, fmt.Errorf("warehouse usage query failed: %w", err)
 	}
+
 	defer rows.Close()
 
 	var usages []domain.ResourceCost
