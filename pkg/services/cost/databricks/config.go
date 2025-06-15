@@ -7,8 +7,8 @@ import (
 )
 
 type Config struct {
-	Host     string `mapstructure:"host" validate:"required"`
-	Token    string `mapstructure:"token" validate:"required"`
+	Host     string `mapstructure:"host"      validate:"required"`
+	Token    string `mapstructure:"token"     validate:"required"`
 	HTTPPath string `mapstructure:"http_path" validate:"required"`
 	Catalog  string `mapstructure:"catalog"`
 	Schema   string `mapstructure:"schema"`

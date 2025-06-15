@@ -105,3 +105,4 @@ go.work
 
 # IntelliJ folder
 .idea
+.DS_Store

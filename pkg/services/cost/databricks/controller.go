@@ -70,7 +70,11 @@ func (c *controller) EstimateResourceCost(ctx context.Context, resourceType stri
 	return an.GenerateReport(ctx, days)
 }
 
-func (c *controller) GetRawResourceCost(ctx context.Context, resourceType string, days int) ([]domain.ResourceCost, error) {
+func (c *controller) GetRawResourceCost(
+	ctx context.Context,
+	resourceType string,
+	days int,
+) ([]domain.ResourceCost, error) {
 	an, err := c.getAnalyzer(resourceType)
 	if err != nil {
 		return nil, err
