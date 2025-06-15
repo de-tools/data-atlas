@@ -13,7 +13,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 )
 
-// ./cost analyze   --platform=databricks   --profile=./etc/profiles/databricks.yaml   --resource_type=sqlwarehouse   --duration=1
+// ./cost analyze --platform=databricks --profile=./etc/profiles/databricks.yaml --resource_type=sqlwarehouse --duration=1
 func TestController(t *testing.T) {
 	// Given
 	db, mock, err := sqlmock.New()

@@ -8,6 +8,7 @@ import (
 	"github.com/de-tools/data-atlas/pkg/services/cost"
 	"github.com/de-tools/data-atlas/pkg/services/cost/aws"
 	awsce "github.com/de-tools/data-atlas/pkg/services/cost/aws_ce"
+	"github.com/de-tools/data-atlas/pkg/services/cost/azure"
 	"github.com/de-tools/data-atlas/pkg/services/cost/databricks"
 	"github.com/de-tools/data-atlas/pkg/services/cost/snowflake"
 )
@@ -19,6 +20,7 @@ func main() {
 			"snowflake":  snowflake.ControllerFactory,
 			"aws_ce":     awsce.ControllerFactory,
 			"aws":        aws.ControllerFactory,
+			"azure":      azure.ControllerFactory,
 		}),
 		Output: os.Stdout,
 	})
