@@ -14,9 +14,12 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/rds v1.97.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.53.1
 	github.com/databricks/databricks-sql-go v1.7.1
+	github.com/go-chi/chi/v5 v5.2.2
+	github.com/rs/zerolog v1.34.0
 	github.com/snowflakedb/gosnowflake v1.14.1
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
+	github.com/stretchr/testify v1.10.0
 	gopkg.in/ini.v1 v1.67.0
 )
 
@@ -50,6 +53,7 @@ require (
 	github.com/aws/smithy-go v1.22.2 // indirect
 	github.com/coreos/go-oidc/v3 v3.5.0 // indirect
 	github.com/danieljoos/wincred v1.2.2 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dnephin/pflag v1.0.7 // indirect
 	github.com/dvsekhvalnov/jose2go v1.6.0 // indirect
 	github.com/fatih/color v1.16.0 // indirect
@@ -81,7 +85,7 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/rs/zerolog v1.28.0 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/sagikazarmark/locafero v0.7.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect

@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/de-tools/data-atlas/pkg/runtime/terminal"
+	"github.com/de-tools/data-atlas/pkg/terminal"
+
 	"github.com/de-tools/data-atlas/pkg/services/cost"
 	"github.com/de-tools/data-atlas/pkg/services/cost/aws"
 	awsce "github.com/de-tools/data-atlas/pkg/services/cost/aws_ce"

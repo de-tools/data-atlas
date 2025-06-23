@@ -4,8 +4,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/de-tools/data-atlas/pkg/runtime/terminal/commands"
-	"github.com/de-tools/data-atlas/pkg/runtime/terminal/export"
+	commands2 "github.com/de-tools/data-atlas/pkg/terminal/commands"
+	"github.com/de-tools/data-atlas/pkg/terminal/export"
 
 	"github.com/de-tools/data-atlas/pkg/services/cost"
 	"github.com/spf13/cobra"
@@ -49,8 +49,8 @@ func (cli *CLI) newRootCmd() *cobra.Command {
 		Short: "Cost analysis tool",
 	}
 
-	cmd.AddCommand(commands.NewAnalyzeCmd(cli.registry, cli.reporter))
-	cmd.AddCommand(commands.NewResourcesCmd(cli.registry))
+	cmd.AddCommand(commands2.NewAnalyzeCmd(cli.registry, cli.reporter))
+	cmd.AddCommand(commands2.NewResourcesCmd(cli.registry))
 
 	return cmd
 }

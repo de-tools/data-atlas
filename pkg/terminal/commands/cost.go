@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/de-tools/data-atlas/pkg/runtime/terminal/export"
+	"github.com/de-tools/data-atlas/pkg/terminal/export"
 
 	"github.com/de-tools/data-atlas/pkg/services/cost"
 	"github.com/spf13/cobra"
