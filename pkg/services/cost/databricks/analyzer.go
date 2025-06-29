@@ -9,10 +9,10 @@ import (
 	"github.com/de-tools/data-atlas/pkg/models/domain"
 )
 
-type DatabricksAnalyzer struct {
+type Analyzer struct {
 	db            *sql.DB
 	metadataField string  // e.g. "warehouse_id", "cluster_id", "job_id"
-	resourceType  string  // e.g. "sqlwarehouse", "cluster", "job"
+	resourceType  string  // e.g. "sql_warehouse", "cluster", "job"
 	serviceName   string  // e.g. "SQL Warehouse", "Cluster", "Job"
 	dbuRate       float64 // USD per DBU, e.g. 0.22
 }
@@ -22,8 +22,8 @@ func NewDatabricksAnalyzer(
 	db *sql.DB,
 	metadataField, resourceType, serviceName string,
 	dbuRate float64,
-) *DatabricksAnalyzer {
-	return &DatabricksAnalyzer{
+) *Analyzer {
+	return &Analyzer{
 		db:            db,
 		metadataField: metadataField,
 		resourceType:  resourceType,
@@ -32,11 +32,11 @@ func NewDatabricksAnalyzer(
 	}
 }
 
-func (a *DatabricksAnalyzer) GetResourceType() string {
+func (a *Analyzer) GetResourceType() string {
 	return a.resourceType
 }
 
-func (a *DatabricksAnalyzer) CollectUsage(_ context.Context, days int) ([]domain.ResourceCost, error) {
+func (a *Analyzer) CollectUsage(_ context.Context, days int) ([]domain.ResourceCost, error) {
 	query := fmt.Sprintf(`
 		SELECT
 		  usage_metadata.%[1]s    AS id,
@@ -96,7 +96,7 @@ func (a *DatabricksAnalyzer) CollectUsage(_ context.Context, days int) ([]domain
 	return out, nil
 }
 
-func (a *DatabricksAnalyzer) GenerateReport(ctx context.Context, days int) (*domain.Report, error) {
+func (a *Analyzer) GenerateReport(ctx context.Context, days int) (*domain.Report, error) {
 	usages, err := a.CollectUsage(ctx, days)
 	if err != nil {
 		return nil, err
