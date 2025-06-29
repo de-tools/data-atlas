@@ -5,13 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+
 	"github.com/databricks/databricks-sdk-go"
 	"github.com/databricks/databricks-sdk-go/config"
 	"github.com/databricks/databricks-sdk-go/service/provisioning"
 	"github.com/rs/zerolog"
-	"io"
-	"net/http"
-	"net/url"
 )
 
 type AccessToken struct {

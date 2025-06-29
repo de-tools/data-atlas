@@ -5,15 +5,15 @@ import (
 	"fmt"
 
 	"github.com/de-tools/data-atlas/pkg/models/domain"
-	"github.com/de-tools/data-atlas/pkg/services/cost"
-	"github.com/de-tools/data-atlas/pkg/services/cost/aws/analyzers"
+	"github.com/de-tools/data-atlas/pkg/services/legacy_cost"
+	"github.com/de-tools/data-atlas/pkg/services/legacy_cost/aws/analyzers"
 )
 
 type controller struct {
-	analyzers map[string]cost.Analyzer
+	analyzers map[string]legacy_cost.Analyzer
 }
 
-func ControllerFactory(ctx context.Context, profile string) (cost.Controller, error) {
+func ControllerFactory(ctx context.Context, profile string) (legacy_cost.Controller, error) {
 	cfg, err := LoadConfig(ctx, profile)
 	if err != nil {
 		return nil, fmt.Errorf("unable to load AWS SDK config: %w", err)
@@ -26,9 +26,9 @@ func ControllerFactory(ctx context.Context, profile string) (cost.Controller, er
 	)
 }
 
-func NewAWSController(analyzers ...cost.Analyzer) (cost.Controller, error) {
+func NewAWSController(analyzers ...legacy_cost.Analyzer) (legacy_cost.Controller, error) {
 	ctrl := &controller{
-		analyzers: make(map[string]cost.Analyzer),
+		analyzers: make(map[string]legacy_cost.Analyzer),
 	}
 
 	for _, a := range analyzers {
@@ -74,7 +74,7 @@ func (c *controller) EstimateResourceCost(ctx context.Context, resourceType stri
 	return analyzer.GenerateReport(ctx, days)
 }
 
-func (c *controller) getAnalyzer(resourceType string) (cost.Analyzer, error) {
+func (c *controller) getAnalyzer(resourceType string) (legacy_cost.Analyzer, error) {
 	analyzer, exists := c.analyzers[resourceType]
 	if !exists {
 		return nil, fmt.Errorf("unsupported resource type: %s", resourceType)

@@ -7,16 +7,17 @@ import (
 	"log"
 	"net/url"
 
+	"github.com/de-tools/data-atlas/pkg/services/legacy_cost"
+
 	_ "github.com/databricks/databricks-sql-go"
 	"github.com/de-tools/data-atlas/pkg/models/domain"
-	"github.com/de-tools/data-atlas/pkg/services/cost"
 )
 
 type controller struct {
-	analyzers map[string]cost.Analyzer
+	analyzers map[string]legacy_cost.Analyzer
 }
 
-func ControllerFactory(_ context.Context, configPath string) (cost.Controller, error) {
+func ControllerFactory(_ context.Context, configPath string) (legacy_cost.Controller, error) {
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
@@ -47,8 +48,8 @@ func ControllerFactory(_ context.Context, configPath string) (cost.Controller, e
 	)
 }
 
-func NewDatabricksController(analyzers ...cost.Analyzer) (cost.Controller, error) {
-	c := &controller{analyzers: make(map[string]cost.Analyzer)}
+func NewDatabricksController(analyzers ...legacy_cost.Analyzer) (legacy_cost.Controller, error) {
+	c := &controller{analyzers: make(map[string]legacy_cost.Analyzer)}
 	for _, a := range analyzers {
 		rt := a.GetResourceType()
 		if _, exists := c.analyzers[rt]; exists {
@@ -90,7 +91,7 @@ func (c *controller) GetSupportedResources() []string {
 	return keys
 }
 
-func (c *controller) getAnalyzer(resourceType string) (cost.Analyzer, error) {
+func (c *controller) getAnalyzer(resourceType string) (legacy_cost.Analyzer, error) {
 	an, ok := c.analyzers[resourceType]
 	if !ok {
 		return nil, fmt.Errorf("unsupported resource type: %s", resourceType)

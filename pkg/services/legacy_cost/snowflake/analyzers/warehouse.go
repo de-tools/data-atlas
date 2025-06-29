@@ -55,18 +55,13 @@ func (wa *warehouseAnalyzer) CollectUsage(_ context.Context, days int) ([]domain
 		usage := domain.ResourceCost{
 			StartTime: start,
 			EndTime:   end,
-			Resource: domain.Resource{
+			Resource: domain.ResourceDef{
 				Platform:    "Snowflake",
 				Service:     "Warehouse",
 				Name:        name,
 				Description: fmt.Sprintf("Snowflake Warehouse %s", name),
-				Metadata: struct {
-					ID        string
-					AccountID string
-					UserID    string
-					Region    string
-				}{
-					ID: name,
+				Metadata: map[string]string{
+					"id": name,
 				},
 			},
 			Costs: []domain.CostComponent{

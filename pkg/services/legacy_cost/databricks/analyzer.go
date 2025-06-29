@@ -71,14 +71,12 @@ func (a *Analyzer) CollectUsage(_ context.Context, days int) ([]domain.ResourceC
 		rc := domain.ResourceCost{
 			StartTime: start,
 			EndTime:   end,
-			Resource: domain.Resource{
+			Resource: domain.ResourceDef{
 				Platform:    "Databricks",
 				Service:     a.serviceName,
 				Name:        id,
 				Description: fmt.Sprintf("Databricks %s %s", a.serviceName, id),
-				Metadata: struct {
-					ID, AccountID, UserID, Region string
-				}{ID: id},
+				Metadata:    map[string]string{"id": id},
 			},
 			Costs: []domain.CostComponent{{
 				Type:        "compute",
@@ -109,7 +107,7 @@ func (a *Analyzer) GenerateReport(ctx context.Context, days int) (*domain.Report
 	}
 	m := make(map[string]*sum)
 	for _, u := range usages {
-		id := u.Resource.Metadata.ID
+		id := u.Resource.Metadata["id"]
 		if _, ok := m[id]; !ok {
 			m[id] = &sum{first: u.StartTime, last: u.EndTime}
 		}

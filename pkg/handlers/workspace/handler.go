@@ -2,28 +2,43 @@ package workspace
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"time"
 
-	"github.com/databricks/databricks-sql-go/logger"
 	"github.com/de-tools/data-atlas/pkg/models/api"
 	"github.com/de-tools/data-atlas/pkg/models/domain"
+	"github.com/de-tools/data-atlas/pkg/services/resources/account"
+	"github.com/de-tools/data-atlas/pkg/services/resources/workspace"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
 )
 
-type Handler struct{}
+const (
+	defaultInterval = 7 // 7 days ~ 1 week
+)
 
-func NewHandler() *Handler {
-	return &Handler{}
+type Handler struct {
+	accMgmt account.ManagementService
+	wsMgmt  workspace.ManagementService
+}
+
+func NewHandler(accMgmt account.ManagementService, wsMgmt workspace.ManagementService) *Handler {
+	return &Handler{
+		accMgmt: accMgmt,
+		wsMgmt:  wsMgmt,
+	}
 }
 
 func (h *Handler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := zerolog.Ctx(ctx)
-	workspaces := []api.Workspace{{Name: "default"}}
-	err := json.NewEncoder(w).Encode(workspaces)
+
+	workspaces, err := h.accMgmt.ListWorkspaces(ctx)
+	var response []api.Workspace
+	for _, ws := range workspaces {
+		response = append(response, api.Workspace{Name: ws.Name})
+	}
+
+	err = json.NewEncoder(w).Encode(workspaces)
 	if err != nil {
 		logger.Error().
 			Err(err).
@@ -34,67 +49,43 @@ func (h *Handler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListResources(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := zerolog.Ctx(ctx)
-	workspace := chi.URLParam(r, "workspace")
-	workspaceResources := api.WorkspaceResources{
-		Resources: []api.Resource{{ID: "1", Name: "warehouse"}},
+	ws := chi.URLParam(r, "workspace")
+
+	resources, err := h.wsMgmt.ListSupportedResources(ctx, domain.Workspace{Name: ws})
+	var response []api.WorkspaceResource
+	for _, r := range resources {
+		response = append(response, api.WorkspaceResource{Name: r.ResourceName})
 	}
-	err := json.NewEncoder(w).Encode(workspaceResources)
+
+	err = json.NewEncoder(w).Encode(response)
 	if err != nil {
 		logger.Error().
 			Err(err).
-			Str("ws", workspace).
+			Str("ws", ws).
 			Msg("failed to encode workspace resources")
 	}
 }
 
 func (h *Handler) GetResourceCost(w http.ResponseWriter, r *http.Request) {
-	workspace := chi.URLParam(r, "workspace")
+	ctx := r.Context()
+	logger := zerolog.Ctx(ctx)
+	ws := chi.URLParam(r, "workspace")
 	resource := chi.URLParam(r, "resource")
+	interval := r.URL.Query().Get("interval")
 
-	fixedEndTime := time.Date(2025, 6, 20, 12, 0, 0, 0, time.UTC)
-	fixedStartTime := fixedEndTime.Add(-24 * time.Hour)
-
-	cost := domain.ResourceCost{
-		StartTime: fixedStartTime,
-		EndTime:   fixedEndTime,
-		Resource: domain.Resource{
-			Platform:    "Databricks",
-			Service:     resource,
-			Name:        resource,
-			Description: fmt.Sprintf("Mock resource in %s", workspace),
-			Tags: map[string]string{
-				"environment": workspace,
-			},
-			Metadata: struct {
-				ID        string
-				AccountID string
-				UserID    string
-				Region    string
-			}{
-				ID:        "mock-id",
-				AccountID: "123456789",
-				UserID:    "user-1",
-				Region:    "us-east-1",
-			},
-		},
-		Costs: []domain.CostComponent{
-			{
-				Type:        "compute",
-				Value:       2,
-				Unit:        "hours",
-				TotalAmount: 0.0084,
-				Rate:        0.0042,
-				Currency:    "USD",
-				Description: "Mock cost data",
-			},
-		},
+	var intervalNum int
+	if interval == "" {
+		intervalNum = defaultInterval
 	}
+	wsResource := domain.WorkspaceResource{WorkspaceName: ws, ResourceName: resource}
+	records, err := h.wsMgmt.GetResourceCost(ctx, wsResource, intervalNum)
 
-	err := json.NewEncoder(w).Encode(cost)
+	// TODO: introduce API response model
+	err = json.NewEncoder(w).Encode(records)
 	if err != nil {
 		logger.Error().
 			Err(err).
-			Str("ws", workspace).
+			Str("ws", ws).
 			Msg("failed to encode resource cost")
 	}
 }

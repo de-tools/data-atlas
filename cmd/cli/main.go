@@ -6,17 +6,17 @@ import (
 
 	"github.com/de-tools/data-atlas/pkg/terminal"
 
-	"github.com/de-tools/data-atlas/pkg/services/cost"
-	"github.com/de-tools/data-atlas/pkg/services/cost/aws"
-	awsce "github.com/de-tools/data-atlas/pkg/services/cost/aws_ce"
-	"github.com/de-tools/data-atlas/pkg/services/cost/azure"
-	"github.com/de-tools/data-atlas/pkg/services/cost/databricks"
-	"github.com/de-tools/data-atlas/pkg/services/cost/snowflake"
+	"github.com/de-tools/data-atlas/pkg/services/legacy_cost"
+	"github.com/de-tools/data-atlas/pkg/services/legacy_cost/aws"
+	awsce "github.com/de-tools/data-atlas/pkg/services/legacy_cost/aws_ce"
+	"github.com/de-tools/data-atlas/pkg/services/legacy_cost/azure"
+	"github.com/de-tools/data-atlas/pkg/services/legacy_cost/databricks"
+	"github.com/de-tools/data-atlas/pkg/services/legacy_cost/snowflake"
 )
 
 func main() {
 	cli := terminal.NewCLI(terminal.Options{
-		Registry: cost.NewRegistry(map[string]cost.ControllerFactory{
+		Registry: legacy_cost.NewRegistry(map[string]legacy_cost.ControllerFactory{
 			"databricks": databricks.ControllerFactory,
 			"snowflake":  snowflake.ControllerFactory,
 			"aws_ce":     awsce.ControllerFactory,

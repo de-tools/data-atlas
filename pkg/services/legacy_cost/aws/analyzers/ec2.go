@@ -55,7 +55,7 @@ func (a *ec2Analyzer) CollectUsage(ctx context.Context, days int) ([]domain.Reso
 			cost := domain.ResourceCost{
 				StartTime: time.Now().AddDate(0, 0, -days),
 				EndTime:   time.Now(),
-				Resource: domain.Resource{
+				Resource: domain.ResourceDef{
 					Platform: "AWS",
 					Service:  "EC2",
 					Name:     instanceName,
@@ -64,14 +64,9 @@ func (a *ec2Analyzer) CollectUsage(ctx context.Context, days int) ([]domain.Reso
 						aws.ToString(instance.InstanceId),
 						instance.InstanceType,
 					),
-					Metadata: struct {
-						ID        string
-						AccountID string
-						UserID    string
-						Region    string
-					}{
-						ID:     aws.ToString(instance.InstanceId),
-						Region: aws.ToString(instance.Placement.AvailabilityZone),
+					Metadata: map[string]string{
+						"id":     aws.ToString(instance.InstanceId),
+						"region": aws.ToString(instance.Placement.AvailabilityZone),
 					},
 				},
 				Costs: []domain.CostComponent{
@@ -117,7 +112,7 @@ func (a *ec2Analyzer) GenerateReport(ctx context.Context, days int) (*domain.Rep
 	})
 
 	for _, cost := range costs {
-		instanceID := cost.Resource.Metadata.ID
+		instanceID := cost.Resource.Metadata["id"]
 		summary, exists := instanceSummary[instanceID]
 		if !exists {
 			summary = &struct {

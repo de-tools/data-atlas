@@ -56,7 +56,7 @@ func (ba *blockStorageAnalyzer) CollectUsage(_ context.Context, days int) ([]dom
 		cost := domain.ResourceCost{
 			StartTime: usageDate,
 			EndTime:   usageDate.Add(24 * time.Hour),
-			Resource: domain.Resource{
+			Resource: domain.ResourceDef{
 				Platform:    "Snowflake",
 				Service:     "BlockStorage",
 				Name:        poolName,
@@ -65,13 +65,8 @@ func (ba *blockStorageAnalyzer) CollectUsage(_ context.Context, days int) ([]dom
 					"storage_type": storageType,
 					"pool":         poolName,
 				},
-				Metadata: struct {
-					ID        string
-					AccountID string
-					UserID    string
-					Region    string
-				}{
-					ID: fmt.Sprintf("%s-%s-%s", poolName, storageType, usageDate.Format("2006-01-02")),
+				Metadata: map[string]string{
+					"id": fmt.Sprintf("%s-%s-%s", poolName, storageType, usageDate.Format("2006-01-02")),
 				},
 			},
 			Costs: []domain.CostComponent{

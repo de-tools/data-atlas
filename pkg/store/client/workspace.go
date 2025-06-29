@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+
 	"github.com/de-tools/data-atlas/pkg/models/store"
 )
 

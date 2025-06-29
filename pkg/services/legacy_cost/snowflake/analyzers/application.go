@@ -61,7 +61,7 @@ func (aa *applicationAnalyzer) CollectUsage(ctx context.Context, days int) ([]do
 		cost := domain.ResourceCost{
 			StartTime: usageDate,
 			EndTime:   usageDate.Add(24 * time.Hour),
-			Resource: domain.Resource{
+			Resource: domain.ResourceDef{
 				Platform:    "Snowflake",
 				Service:     "Application",
 				Name:        appName,
@@ -69,13 +69,8 @@ func (aa *applicationAnalyzer) CollectUsage(ctx context.Context, days int) ([]do
 				Tags: map[string]string{
 					"global_name": strPtrToStr(globalName),
 				},
-				Metadata: struct {
-					ID        string
-					AccountID string
-					UserID    string
-					Region    string
-				}{
-					ID: appID,
+				Metadata: map[string]string{
+					"id": appID,
 				},
 			},
 			Costs: []domain.CostComponent{
@@ -131,7 +126,7 @@ func (aa *applicationAnalyzer) GenerateReport(ctx context.Context, days int) (*d
 	})
 
 	for _, cost := range costs {
-		appID := cost.Resource.Metadata.ID
+		appID := cost.Resource.Metadata["id"]
 		summary, exists := appSummary[appID]
 		if !exists {
 			summary = &struct {

@@ -7,17 +7,17 @@ import (
 	"log"
 
 	"github.com/de-tools/data-atlas/pkg/models/domain"
-	"github.com/de-tools/data-atlas/pkg/services/cost"
-	"github.com/de-tools/data-atlas/pkg/services/cost/snowflake/analyzers"
+	"github.com/de-tools/data-atlas/pkg/services/legacy_cost"
+	"github.com/de-tools/data-atlas/pkg/services/legacy_cost/snowflake/analyzers"
 	sf "github.com/snowflakedb/gosnowflake"
 )
 
 type controller struct {
-	analyzers map[string]cost.Analyzer
+	analyzers map[string]legacy_cost.Analyzer
 }
 
 // ControllerFactory creates a new Snowflake controller from a config file
-func ControllerFactory(_ context.Context, configPath string) (cost.Controller, error) {
+func ControllerFactory(_ context.Context, configPath string) (legacy_cost.Controller, error) {
 	// Load configuration
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
@@ -43,9 +43,9 @@ func ControllerFactory(_ context.Context, configPath string) (cost.Controller, e
 }
 
 // NewSnowflakeController creates a new instance of SnowflakeController with provided analyzers
-func NewSnowflakeController(analyzers ...cost.Analyzer) (cost.Controller, error) {
+func NewSnowflakeController(analyzers ...legacy_cost.Analyzer) (legacy_cost.Controller, error) {
 	controller := &controller{
-		analyzers: make(map[string]cost.Analyzer),
+		analyzers: make(map[string]legacy_cost.Analyzer),
 	}
 
 	for _, a := range analyzers {
@@ -100,7 +100,7 @@ func (c *controller) GetSupportedResources() []string {
 	return resources
 }
 
-func (c *controller) getAnalyzer(resourceType string) (cost.Analyzer, error) {
+func (c *controller) getAnalyzer(resourceType string) (legacy_cost.Analyzer, error) {
 	analyzer, exists := c.analyzers[resourceType]
 	if !exists {
 		return nil, fmt.Errorf("unsupported resource type: %s", resourceType)

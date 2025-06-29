@@ -63,7 +63,7 @@ func (qa *queryAnalyzer) CollectUsage(_ context.Context, days int) ([]domain.Res
 		cost := domain.ResourceCost{
 			StartTime: startTime,
 			EndTime:   startTime.Add(time.Duration(execTime) * time.Millisecond),
-			Resource: domain.Resource{
+			Resource: domain.ResourceDef{
 				Platform:    "Snowflake",
 				Service:     "Query",
 				Name:        fmt.Sprintf("%s - %s", warehouseName, queryID),
@@ -72,13 +72,8 @@ func (qa *queryAnalyzer) CollectUsage(_ context.Context, days int) ([]domain.Res
 					"warehouse": warehouseName,
 					"query_id":  queryID,
 				},
-				Metadata: struct {
-					ID        string
-					AccountID string
-					UserID    string
-					Region    string
-				}{
-					ID: queryID,
+				Metadata: map[string]string{
+					"id": queryID,
 				},
 			},
 			Costs: []domain.CostComponent{
@@ -128,7 +123,7 @@ func (qa *queryAnalyzer) GenerateReport(ctx context.Context, days int) (*domain.
 	})
 
 	for _, cost := range costs {
-		queryID := cost.Resource.Metadata.ID
+		queryID := cost.Resource.Metadata["id"]
 		summary, exists := querySummary[queryID]
 		if !exists {
 			summary = &struct {

@@ -7,11 +7,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/de-tools/data-atlas/pkg/services/legacy_cost"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/costexplorer"
 	"github.com/aws/aws-sdk-go-v2/service/costexplorer/types"
 	"github.com/de-tools/data-atlas/pkg/models/domain"
-	"github.com/de-tools/data-atlas/pkg/services/cost"
 )
 
 var supportedServices = map[string]string{
@@ -24,7 +25,7 @@ type controller struct {
 	client *costexplorer.Client
 }
 
-func ControllerFactory(ctx context.Context, profile string) (cost.Controller, error) {
+func ControllerFactory(ctx context.Context, profile string) (legacy_cost.Controller, error) {
 	cfg, err := LoadConfig(ctx, profile)
 	if err != nil {
 		return nil, fmt.Errorf("unable to load AWS SDK config: %w", err)
@@ -126,7 +127,7 @@ func (c *controller) EstimateResourceCost(ctx context.Context, resourceType stri
 	// Group costs by region
 	regionCosts := make(map[string][]domain.ResourceCost)
 	for _, cost := range costs {
-		region := cost.Resource.Metadata.Region
+		region := cost.Resource.Metadata["region"]
 		regionCosts[region] = append(regionCosts[region], cost)
 	}
 
@@ -182,17 +183,12 @@ func (c *controller) createResource(
 	keys []string,
 	metrics map[string]types.MetricValue,
 	resourceType string,
-) domain.Resource {
-	resource := domain.Resource{
+) domain.ResourceDef {
+	resource := domain.ResourceDef{
 		Platform: "AWS",
 		Service:  resourceType,
 		Tags:     make(map[string]string),
-		Metadata: struct {
-			ID        string
-			AccountID string
-			UserID    string
-			Region    string
-		}{},
+		Metadata: map[string]string{},
 	}
 
 	for i, key := range keys {
@@ -201,7 +197,7 @@ func (c *controller) createResource(
 			resource.Name = key
 			resource.Description = c.getResourceDescription(resourceType, key)
 		case 1: // REGION
-			resource.Metadata.Region = key
+			resource.Metadata["region"] = key
 		case 2: // Environment tag
 			resource.Tags["Environment"] = key
 		}

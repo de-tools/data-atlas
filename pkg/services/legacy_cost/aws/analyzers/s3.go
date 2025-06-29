@@ -77,19 +77,14 @@ func (a *s3Analyzer) CollectUsage(ctx context.Context, days int) ([]domain.Resou
 		cost := domain.ResourceCost{
 			StartTime: time.Now().AddDate(0, 0, -days),
 			EndTime:   time.Now(),
-			Resource: domain.Resource{
+			Resource: domain.ResourceDef{
 				Platform:    "AWS",
 				Service:     "S3",
 				Name:        aws.ToString(bucket.Name),
 				Description: "S3 Bucket (Standard Storage)",
-				Metadata: struct {
-					ID        string
-					AccountID string
-					UserID    string
-					Region    string
-				}{
-					ID:     aws.ToString(bucket.Name),
-					Region: region,
+				Metadata: map[string]string{
+					"id":     aws.ToString(bucket.Name),
+					"region": region,
 				},
 			},
 			Costs: []domain.CostComponent{
@@ -156,7 +151,7 @@ func (a *s3Analyzer) GenerateReport(ctx context.Context, days int) (*domain.Repo
 	})
 
 	for _, cost := range costs {
-		bucketName := cost.Resource.Metadata.ID
+		bucketName := cost.Resource.Metadata["id"]
 		summary, exists := bucketSummary[bucketName]
 		if !exists {
 			summary = &struct {

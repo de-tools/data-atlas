@@ -39,19 +39,14 @@ func (a *rdsAnalyzer) CollectUsage(ctx context.Context, days int) ([]domain.Reso
 		cost := domain.ResourceCost{
 			StartTime: time.Now().AddDate(0, 0, -days),
 			EndTime:   time.Now(),
-			Resource: domain.Resource{
+			Resource: domain.ResourceDef{
 				Platform:    "AWS",
 				Service:     "RDS",
 				Name:        aws.ToString(instance.DBInstanceIdentifier),
 				Description: fmt.Sprintf("RDS Instance (%s, %s)", *instance.DBInstanceClass, *instance.Engine),
-				Metadata: struct {
-					ID        string
-					AccountID string
-					UserID    string
-					Region    string
-				}{
-					ID:     aws.ToString(instance.DBInstanceArn),
-					Region: aws.ToString(instance.AvailabilityZone),
+				Metadata: map[string]string{
+					"id":     aws.ToString(instance.DBInstanceArn),
+					"region": aws.ToString(instance.AvailabilityZone),
 				},
 			},
 			Costs: []domain.CostComponent{
@@ -109,7 +104,7 @@ func (a *rdsAnalyzer) GenerateReport(ctx context.Context, days int) (*domain.Rep
 	})
 
 	for _, cost := range costs {
-		instanceID := cost.Resource.Metadata.ID
+		instanceID := cost.Resource.Metadata["id"]
 		summary, exists := instanceSummary[instanceID]
 		if !exists {
 			summary = &struct {

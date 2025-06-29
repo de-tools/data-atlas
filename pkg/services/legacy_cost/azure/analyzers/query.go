@@ -8,7 +8,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/costmanagement/armcostmanagement"
 	"github.com/de-tools/data-atlas/pkg/models/domain"
-	"github.com/de-tools/data-atlas/pkg/services/cost"
+	"github.com/de-tools/data-atlas/pkg/services/legacy_cost"
 )
 
 type AnalyzerConfig struct {
@@ -24,7 +24,7 @@ type analyzer struct {
 	scope       string
 }
 
-func NewQueryAnalyzer(factory *armcostmanagement.ClientFactory, config AnalyzerConfig) cost.Analyzer {
+func NewQueryAnalyzer(factory *armcostmanagement.ClientFactory, config AnalyzerConfig) legacy_cost.Analyzer {
 	return &analyzer{
 		costFactory: factory,
 		config:      config,
@@ -80,20 +80,15 @@ func (a *analyzer) CollectUsage(ctx context.Context, days int) ([]domain.Resourc
 		cost := domain.ResourceCost{
 			StartTime: timeFrom,
 			EndTime:   timeTo,
-			Resource: domain.Resource{
+			Resource: domain.ResourceDef{
 				Platform:    "Azure",
 				Service:     a.config.ServiceName,
 				Name:        fmt.Sprintf("%v", row[0]),
 				Description: fmt.Sprintf("Azure %s Usage", a.config.DisplayName),
-				Metadata: struct {
-					ID        string
-					AccountID string
-					UserID    string
-					Region    string
-				}{
-					ID:        fmt.Sprintf("%v", row[0]),
-					AccountID: a.config.SubscriptionID,
-					Region:    fmt.Sprintf("%v", row[1]),
+				Metadata: map[string]string{
+					"id":         fmt.Sprintf("%v", row[0]),
+					"account_id": a.config.SubscriptionID,
+					"region":     fmt.Sprintf("%v", row[1]),
 				},
 			},
 			Costs: []domain.CostComponent{{

@@ -1,4 +1,4 @@
-package cost
+package legacy_cost
 
 import (
 	"context"
