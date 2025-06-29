@@ -8,9 +8,11 @@ import (
 	"github.com/de-tools/data-atlas/pkg/models/domain"
 	"github.com/de-tools/data-atlas/pkg/services/resources/account"
 	"github.com/de-tools/data-atlas/pkg/services/resources/workspace"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
 )
+
 
 const (
 	defaultInterval = 7 // 7 days ~ 1 week
@@ -39,6 +41,7 @@ func (h *Handler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = json.NewEncoder(w).Encode(workspaces)
+
 	if err != nil {
 		logger.Error().
 			Err(err).
@@ -49,6 +52,7 @@ func (h *Handler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListResources(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := zerolog.Ctx(ctx)
+
 	ws := chi.URLParam(r, "workspace")
 
 	resources, err := h.wsMgmt.ListSupportedResources(ctx, domain.Workspace{Name: ws})

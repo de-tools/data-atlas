@@ -59,6 +59,7 @@ type testCase struct {
 
 func TestWebAPI_Endpoints(t *testing.T) {
 	logger := zerolog.New(zerolog.NewTestWriter(nil))
+
 	mockAccSvc := new(mockAccountService)
 	mockWsSvc := new(mockWorkspaceService)
 
@@ -158,7 +159,6 @@ func TestWebAPI_Endpoints(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.setupMocks(mockAccSvc, mockWsSvc)
-
 			resp, err := http.Get(testServer.URL + tc.path)
 			require.NoError(t, err, "Failed to send request")
 			defer func(Body io.ReadCloser) {

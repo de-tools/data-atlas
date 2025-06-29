@@ -12,6 +12,7 @@ import (
 	"github.com/de-tools/data-atlas/pkg/services/resources/workspace"
 
 	handlers "github.com/de-tools/data-atlas/pkg/handlers/workspace"
+
 	dataatlasmiddleware "github.com/de-tools/data-atlas/pkg/server/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
