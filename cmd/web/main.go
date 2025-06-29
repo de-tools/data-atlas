@@ -1,10 +1,11 @@
 package main
 
 import (
-	"github.com/de-tools/data-atlas/pkg/services/resources/account"
-	"github.com/de-tools/data-atlas/pkg/services/resources/workspace"
 	"os"
 	"time"
+
+	"github.com/de-tools/data-atlas/pkg/services/resources/account"
+	"github.com/de-tools/data-atlas/pkg/services/resources/workspace"
 
 	"github.com/de-tools/data-atlas/pkg/server"
 
@@ -22,7 +23,7 @@ func main() {
 			Workspace: workspace.NewManagementService(),
 		},
 	})
-	
+
 	if err := api.Start(); err != nil {
 		logger.Fatal().Err(err).Msg("server failed")
 	}
