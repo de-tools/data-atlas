@@ -4,23 +4,23 @@ import (
 	"io"
 	"os"
 
+	"github.com/de-tools/data-atlas/pkg/services/legacy_cost"
 	commands2 "github.com/de-tools/data-atlas/pkg/terminal/commands"
 	"github.com/de-tools/data-atlas/pkg/terminal/export"
 
-	"github.com/de-tools/data-atlas/pkg/services/cost"
 	"github.com/spf13/cobra"
 )
 
 // CLI represents the command-line interface
 type CLI struct {
-	registry cost.Registry
+	registry legacy_cost.Registry
 	reporter *export.Reporter
 	rootCmd  *cobra.Command
 }
 
 // Options contain configuration for the CLI
 type Options struct {
-	Registry cost.Registry
+	Registry legacy_cost.Registry
 	Output   io.Writer
 }
 

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/de-tools/data-atlas/pkg/services/legacy_cost"
 	"github.com/de-tools/data-atlas/pkg/terminal/export"
 
-	"github.com/de-tools/data-atlas/pkg/services/cost"
 	"github.com/spf13/cobra"
 )
 
@@ -16,11 +16,11 @@ type AnalyzeCmd struct {
 	platform     string
 	resourceType string
 	duration     int
-	registry     cost.Registry
+	registry     legacy_cost.Registry
 	reporter     *export.Reporter
 }
 
-func NewAnalyzeCmd(registry cost.Registry, reporter *export.Reporter) *cobra.Command {
+func NewAnalyzeCmd(registry legacy_cost.Registry, reporter *export.Reporter) *cobra.Command {
 	ac := &AnalyzeCmd{registry: registry, reporter: reporter}
 	cmd := &cobra.Command{
 		Use:   "analyze",
