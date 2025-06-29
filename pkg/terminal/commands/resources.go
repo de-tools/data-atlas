@@ -4,17 +4,17 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/de-tools/data-atlas/pkg/services/cost"
+	"github.com/de-tools/data-atlas/pkg/services/legacy_cost"
 	"github.com/spf13/cobra"
 )
 
 type ResourcesCmd struct {
 	profilePath string
 	platform    string
-	registry    cost.Registry
+	registry    legacy_cost.Registry
 }
 
-func NewResourcesCmd(registry cost.Registry) *cobra.Command {
+func NewResourcesCmd(registry legacy_cost.Registry) *cobra.Command {
 	rc := &ResourcesCmd{registry: registry}
 	cmd := &cobra.Command{
 		Use:   "resources",

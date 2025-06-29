@@ -8,7 +8,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/de-tools/data-atlas/pkg/handlers/workspace"
+	"github.com/de-tools/data-atlas/pkg/services/resources/account"
+	"github.com/de-tools/data-atlas/pkg/services/resources/workspace"
+
+	handlers "github.com/de-tools/data-atlas/pkg/handlers/workspace"
+
 	dataatlasmiddleware "github.com/de-tools/data-atlas/pkg/server/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -21,13 +25,18 @@ type WebAPI struct {
 	server *http.Server
 }
 
+type Dependencies struct {
+	Account   account.ManagementService
+	Workspace workspace.ManagementService
+}
 type Config struct {
 	Addr            string
 	ShutdownTimeout time.Duration
+	Dependencies    Dependencies
 }
 
 func NewWebAPI(logger zerolog.Logger, config Config) *WebAPI {
-	wsHandler := workspace.NewHandler()
+	wsHandler := handlers.NewHandler(config.Dependencies.Account, config.Dependencies.Workspace)
 
 	router := chi.NewRouter()
 
