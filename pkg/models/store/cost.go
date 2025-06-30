@@ -14,3 +14,22 @@ type UsageRecord struct {
 	StartTime time.Time
 	EndTime   time.Time
 }
+
+type DailyUsageAggregate struct {
+	Date       time.Time
+	Resource   string
+	TotalUsage float64
+	TotalCost  float64
+	Unit       string
+	Currency   string
+}
+
+type MonthlyUsageAggregate struct {
+	Year       int
+	Month      time.Month
+	Resource   string
+	TotalUsage float64
+	TotalCost  float64
+	Unit       string
+	Currency   string
+}

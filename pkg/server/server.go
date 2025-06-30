@@ -8,8 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/de-tools/data-atlas/pkg/services/resources/account"
-	"github.com/de-tools/data-atlas/pkg/services/resources/workspace"
+	"github.com/de-tools/data-atlas/pkg/services/account"
 
 	handlers "github.com/de-tools/data-atlas/pkg/handlers/workspace"
 
@@ -26,8 +25,7 @@ type WebAPI struct {
 }
 
 type Dependencies struct {
-	Account   account.ManagementService
-	Workspace workspace.ManagementService
+	Account account.Explorer
 }
 type Config struct {
 	Addr            string
@@ -36,7 +34,7 @@ type Config struct {
 }
 
 func NewWebAPI(logger zerolog.Logger, config Config) *WebAPI {
-	wsHandler := handlers.NewHandler(config.Dependencies.Account, config.Dependencies.Workspace)
+	wsHandler := handlers.NewHandler(config.Dependencies.Account)
 
 	router := chi.NewRouter()
 
