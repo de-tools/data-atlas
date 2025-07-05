@@ -2,15 +2,14 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"os/user"
-	"time"
-
 	"github.com/de-tools/data-atlas/pkg/server"
 	"github.com/de-tools/data-atlas/pkg/services/account"
 	"github.com/de-tools/data-atlas/pkg/services/config"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
+	"net/http"
+	"os"
+	"os/user"
 )
 
 var cfgPath string
@@ -34,7 +33,7 @@ func main() {
 	}
 }
 
-func runServer(cmd *cobra.Command, args []string) error {
+func runServer(_ *cobra.Command, _ []string) error {
 	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
 
 	registry, err := config.NewRegistry(cfgPath)
@@ -44,17 +43,12 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	logger.Info().Msgf("Configuration found at %s", cfgPath)
 
-	api := server.NewWebAPI(logger, server.Config{
-		Addr:            ":8080",
-		ShutdownTimeout: 10 * time.Second,
+	mux := server.ConfigureRouter(server.Config{
 		Dependencies: server.Dependencies{
 			Account: account.NewExplorer(registry),
+			Logger:  logger,
 		},
 	})
 
-	if err := api.Start(); err != nil {
-		return fmt.Errorf("server failed: %w", err)
-	}
-
-	return nil
+	return http.ListenAndServe(":8080", mux)
 }

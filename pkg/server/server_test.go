@@ -80,10 +80,11 @@ func TestWebAPI_Endpoints(t *testing.T) {
 		ShutdownTimeout: 10 * time.Second,
 		Dependencies: Dependencies{
 			Account: mockExp,
+			Logger:  logger,
 		},
 	}
-	webAPI := NewWebAPI(logger, config)
-	testServer := httptest.NewServer(webAPI.router)
+	router := ConfigureRouter(config)
+	testServer := httptest.NewServer(router)
 	defer testServer.Close()
 
 	expectedStartTime, _ := time.Parse("2006-01-02", "2025-06-13")
