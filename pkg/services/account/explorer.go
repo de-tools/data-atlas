@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/de-tools/data-atlas/pkg/models/domain"
-	workspace2 "github.com/de-tools/data-atlas/pkg/services/account/workspace"
+	workspace "github.com/de-tools/data-atlas/pkg/services/account/workspace"
 	"github.com/de-tools/data-atlas/pkg/services/config"
 	"github.com/de-tools/data-atlas/pkg/store/pricing"
 	"github.com/de-tools/data-atlas/pkg/store/usage"
@@ -18,8 +18,8 @@ const (
 
 type Explorer interface {
 	ListWorkspaces(ctx context.Context) ([]domain.Workspace, error)
-	GetWorkspaceExplorer(ctx context.Context, ws domain.Workspace) (workspace2.Explorer, error)
-	GetWorkspaceCostManager(ctx context.Context, ws domain.Workspace) (workspace2.CostManager, error)
+	GetWorkspaceExplorer(ctx context.Context, ws domain.Workspace) (workspace.Explorer, error)
+	GetWorkspaceCostManager(ctx context.Context, ws domain.Workspace) (workspace.CostManager, error)
 }
 
 type accountExplorer struct {
@@ -42,19 +42,19 @@ func (a *accountExplorer) ListWorkspaces(ctx context.Context) ([]domain.Workspac
 	return workspaces, nil
 }
 
-func (a *accountExplorer) GetWorkspaceExplorer(ctx context.Context, ws domain.Workspace) (workspace2.Explorer, error) {
+func (a *accountExplorer) GetWorkspaceExplorer(ctx context.Context, ws domain.Workspace) (workspace.Explorer, error) {
 	cfg, err := a.registry.GetConfig(ctx, ws.Name)
 	if err != nil {
 		return nil, err
 	}
 
-	return workspace2.NewExplorer(cfg, ws), nil
+	return workspace.NewExplorer(cfg, ws), nil
 }
 
 func (a *accountExplorer) GetWorkspaceCostManager(
 	ctx context.Context,
 	ws domain.Workspace,
-) (workspace2.CostManager, error) {
+) (workspace.CostManager, error) {
 	cfg, err := a.registry.GetConfig(ctx, ws.Name)
 	if err != nil {
 		return nil, err
@@ -68,7 +68,7 @@ func (a *accountExplorer) GetWorkspaceCostManager(
 	}
 
 	store := usage.NewStore(db, pricing.NewStore())
-	costManager := workspace2.NewCostManager(store)
+	costManager := workspace.NewCostManager(store)
 
 	return costManager, nil
 }
