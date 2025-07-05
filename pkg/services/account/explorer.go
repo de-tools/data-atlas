@@ -2,10 +2,18 @@ package account
 
 import (
 	"context"
-
+	"database/sql"
+	"fmt"
 	"github.com/de-tools/data-atlas/pkg/models/domain"
+	workspace "github.com/de-tools/data-atlas/pkg/services/account/workspace"
 	"github.com/de-tools/data-atlas/pkg/services/config"
-	"github.com/de-tools/data-atlas/pkg/services/workspace"
+	"github.com/de-tools/data-atlas/pkg/store/pricing"
+	"github.com/de-tools/data-atlas/pkg/store/usage"
+	"log"
+)
+
+const (
+	defaultHttpPath = "/sql/1.0/warehouses/warehouse"
 )
 
 type Explorer interface {
@@ -35,14 +43,32 @@ func (a *accountExplorer) ListWorkspaces(ctx context.Context) ([]domain.Workspac
 }
 
 func (a *accountExplorer) GetWorkspaceExplorer(ctx context.Context, ws domain.Workspace) (workspace.Explorer, error) {
-	//TODO implement me
-	panic("implement me")
+	cfg, err := a.registry.GetConfig(ctx, ws.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	return workspace.NewExplorer(cfg, ws), nil
 }
 
 func (a *accountExplorer) GetWorkspaceCostManager(
 	ctx context.Context,
 	ws domain.Workspace,
 ) (workspace.CostManager, error) {
-	//TODO implement me
-	panic("implement me")
+	cfg, err := a.registry.GetConfig(ctx, ws.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	dsn := fmt.Sprintf("token:%s@%s%s", cfg.Token, cfg.Host, defaultHttpPath)
+
+	db, err := sql.Open("databricks", dsn)
+	if err != nil {
+		log.Fatalf("failed to connect to Databricks: %v", err)
+	}
+
+	store := usage.NewStore(db, pricing.NewStore())
+	costManager := workspace.NewCostManager(store)
+
+	return costManager, nil
 }

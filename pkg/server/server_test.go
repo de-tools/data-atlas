@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"github.com/de-tools/data-atlas/pkg/services/account/workspace"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/de-tools/data-atlas/pkg/models/api"
 	"github.com/de-tools/data-atlas/pkg/models/domain"
-	"github.com/de-tools/data-atlas/pkg/services/workspace"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -62,9 +62,9 @@ type mockWorkspaceCostManager struct {
 func (m *mockWorkspaceCostManager) GetResourceCost(
 	ctx context.Context,
 	resource domain.WorkspaceResource,
-	interval int,
+	startTime, endTime time.Time,
 ) ([]domain.ResourceCost, error) {
-	args := m.Called(ctx, resource, interval)
+	args := m.Called(ctx, resource, startTime, endTime)
 	return args.Get(0).([]domain.ResourceCost), args.Error(1)
 }
 
@@ -80,11 +80,15 @@ func TestWebAPI_Endpoints(t *testing.T) {
 		ShutdownTimeout: 10 * time.Second,
 		Dependencies: Dependencies{
 			Account: mockExp,
+			Logger:  logger,
 		},
 	}
-	webAPI := NewWebAPI(logger, config)
-	testServer := httptest.NewServer(webAPI.router)
+	router := ConfigureRouter(config)
+	testServer := httptest.NewServer(router)
 	defer testServer.Close()
+
+	expectedStartTime, _ := time.Parse("2006-01-02", "2025-06-13")
+	expectedEndTime, _ := time.Parse("2006-01-02", "2025-06-20")
 
 	tests := []struct {
 		name           string
@@ -120,54 +124,51 @@ func TestWebAPI_Endpoints(t *testing.T) {
 		},
 		{
 			name: "GetResourceCost",
-			path: "/api/v1/workspaces/default/warehouse/cost",
+			path: "/api/v1/workspaces/default/warehouse/cost?from=2025-06-13&to=2025-06-20",
 			setupMocks: func() {
 				mockExp.On("GetWorkspaceCostManager", mock.Anything, domain.Workspace{Name: "default"}).
 					Return(mockCostMgr, nil)
-				mockCostMgr.On("GetResourceCost", mock.Anything,
+				mockCostMgr.On("GetResourceCost",
+					mock.Anything,
 					domain.WorkspaceResource{
 						WorkspaceName: "default",
 						ResourceName:  "warehouse",
-					}, 7).
-					Return([]domain.ResourceCost{{
-						StartTime: time.Date(2025, 6, 19, 12, 0, 0, 0, time.UTC),
-						EndTime:   time.Date(2025, 6, 20, 12, 0, 0, 0, time.UTC),
-						Resource: domain.ResourceDef{
-							Platform:    "Databricks",
-							Service:     "warehouse",
-							Name:        "warehouse",
-							Description: "Mock resource in default",
-							Tags: map[string]string{
-								"environment": "default",
-							},
-							Metadata: map[string]string{},
-						},
-						Costs: []domain.CostComponent{{
-							Type:        "compute",
-							Value:       2,
-							Unit:        "hours",
-							TotalAmount: 0.0084,
-							Rate:        0.0042,
-							Currency:    "USD",
-							Description: "Mock cost data",
-						}},
-					}}, nil)
+					},
+					expectedStartTime,
+					expectedEndTime,
+				).Return([]domain.ResourceCost{{
+					StartTime: expectedStartTime,
+					EndTime:   expectedEndTime,
+					Resource: domain.ResourceDef{
+						Platform:    "Databricks",
+						Service:     "warehouse",
+						Name:        "warehouse",
+						Description: "Mock resource in default",
+						Metadata:    map[string]string{},
+					},
+					Costs: []domain.CostComponent{{
+						Type:        "compute",
+						Value:       2,
+						Unit:        "hours",
+						TotalAmount: 0.0084,
+						Rate:        0.0042,
+						Currency:    "USD",
+						Description: "Mock cost data",
+					}},
+				}}, nil)
 			},
 			expectedStatus: http.StatusOK,
-			expected: []domain.ResourceCost{{
-				StartTime: time.Date(2025, 6, 19, 12, 0, 0, 0, time.UTC),
-				EndTime:   time.Date(2025, 6, 20, 12, 0, 0, 0, time.UTC),
-				Resource: domain.ResourceDef{
+			expected: []api.ResourceCost{{
+				StartTime: expectedStartTime,
+				EndTime:   expectedEndTime,
+				Resource: api.ResourceDef{
 					Platform:    "Databricks",
 					Service:     "warehouse",
 					Name:        "warehouse",
 					Description: "Mock resource in default",
-					Tags: map[string]string{
-						"environment": "default",
-					},
-					Metadata: map[string]string{},
+					Metadata:    map[string]string{},
 				},
-				Costs: []domain.CostComponent{{
+				Costs: []api.CostComponent{{
 					Type:        "compute",
 					Value:       2,
 					Unit:        "hours",
@@ -177,7 +178,63 @@ func TestWebAPI_Endpoints(t *testing.T) {
 					Description: "Mock cost data",
 				}},
 			}},
-			parseResponse: unmarshalResponse[[]domain.ResourceCost](),
+			parseResponse: unmarshalResponse[[]api.ResourceCost](),
+		},
+		{
+			name: "GetResourceCost_InvalidFromDate",
+			path: "/api/v1/workspaces/default/warehouse/cost?from=invalid-date",
+			setupMocks: func() {
+				mockExp.On("GetWorkspaceCostManager", mock.Anything, domain.Workspace{Name: "default"}).
+					Return(mockCostMgr, nil)
+			},
+			expectedStatus: http.StatusBadRequest,
+			expected:       "invalid 'from' date format. Expected format: YYYY-MM-DD\n",
+			parseResponse: func(data []byte) (interface{}, error) {
+				return string(data), nil
+			},
+		},
+		{
+			name: "GetResourceCost_InvalidToDate",
+			path: "/api/v1/workspaces/default/warehouse/cost?to=invalid-date",
+			setupMocks: func() {
+				mockExp.On("GetWorkspaceCostManager", mock.Anything, domain.Workspace{Name: "default"}).
+					Return(mockCostMgr, nil)
+			},
+			expectedStatus: http.StatusBadRequest,
+			expected:       "invalid 'to' date format. Expected format: YYYY-MM-DD\n",
+			parseResponse: func(data []byte) (interface{}, error) {
+				return string(data), nil
+			},
+		},
+		{
+			name: "GetResourceCost_DefaultDates",
+			path: "/api/v1/workspaces/default/warehouse/cost",
+			setupMocks: func() {
+				mockExp.On("GetWorkspaceCostManager", mock.Anything, domain.Workspace{Name: "default"}).
+					Return(mockCostMgr, nil)
+
+				now := time.Now()
+				startTime := now.AddDate(0, 0, -7)
+
+				mockCostMgr.On("GetResourceCost",
+					mock.Anything,
+					domain.WorkspaceResource{
+						WorkspaceName: "default",
+						ResourceName:  "warehouse",
+					},
+					mock.MatchedBy(func(t time.Time) bool {
+						// Match the start time within a day to account for test execution time
+						return t.Sub(startTime).Hours() < 24
+					}),
+					mock.MatchedBy(func(t time.Time) bool {
+						// Match the end time within a day
+						return now.Sub(t).Hours() < 24
+					}),
+				).Return([]domain.ResourceCost{}, nil)
+			},
+			expectedStatus: http.StatusOK,
+			expected:       []api.ResourceCost{},
+			parseResponse:  unmarshalResponse[[]api.ResourceCost](),
 		},
 	}
 
