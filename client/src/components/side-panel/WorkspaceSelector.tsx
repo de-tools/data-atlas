@@ -1,7 +1,5 @@
-import { useEffect, useState } from "react";
-
-import { fetchWorkspaces } from "../services/api";
-import type { Workspace } from "../types/api";
+import { useWorkspaces } from "../../hooks/useWorkspaces";
+import type { Workspace } from "../../types/api";
 
 interface WorkspaceSelectorProps {
   onSelect: (workspace: Workspace) => void;
@@ -9,33 +7,7 @@ interface WorkspaceSelectorProps {
 }
 
 export function WorkspaceSelector({ onSelect, selectedWorkspace }: WorkspaceSelectorProps) {
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
-
-  useEffect(() => {
-    async function loadWorkspaces() {
-      try {
-        setLoading(true);
-        const data = await fetchWorkspaces();
-        setWorkspaces(data);
-
-        if (data.length > 0 && !selectedWorkspace && !initialLoadComplete) {
-          onSelect(data[0]);
-          setInitialLoadComplete(true);
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load workspaces");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadWorkspaces();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const { workspaces, loading, error } = useWorkspaces(onSelect, selectedWorkspace);
 
   if (loading && workspaces.length === 0) {
     return <div className="p-4 text-center">Loading workspaces...</div>;

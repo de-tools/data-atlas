@@ -1,7 +1,5 @@
-import { useEffect, useState } from "react";
-
-import { fetchWorkspaceResources } from "../services/api";
-import type { Workspace, WorkspaceResource } from "../types/api";
+import { useWorkspaceResources } from "../../hooks/useWorkspaceResources";
+import type { Workspace, WorkspaceResource } from "../../types/api";
 
 interface ResourceSelectorProps {
   workspace: Workspace;
@@ -14,30 +12,7 @@ export function ResourceSelector({
   onSelectResources,
   selectedResources,
 }: ResourceSelectorProps) {
-  const [resources, setResources] = useState<WorkspaceResource[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function loadResources() {
-      try {
-        setLoading(true);
-        setError(null);
-        const data = await fetchWorkspaceResources(workspace.name);
-        setResources(data);
-
-        onSelectResources(data);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load resources");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    if (workspace) {
-      loadResources();
-    }
-  }, [workspace, onSelectResources]);
+  const { resources, loading, error } = useWorkspaceResources(workspace, onSelectResources);
 
   const handleResourceToggle = (resource: WorkspaceResource) => {
     const isSelected = selectedResources.some((r) => r.name === resource.name);

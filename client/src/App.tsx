@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { CostChart } from "./components/CostChart";
-import { ResourceSelector } from "./components/ResourceSelector";
-import { TimeRangeSelector } from "./components/TimeRangeSelector";
-import { WorkspaceSelector } from "./components/WorkspaceSelector";
+import { CostView } from "./components/cost-view/CostView";
+import { SidePanel } from "./components/side-panel/SidePanel";
 import { fetchResourceCost } from "./services/api";
 import type { ResourceCost, Workspace, WorkspaceResource } from "./types/api";
 
@@ -107,43 +105,21 @@ function App() {
         </header>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-          <div className="col-span-1 space-y-6 md:col-span-1">
-            <div className="rounded-lg bg-white p-6 shadow">
-              <WorkspaceSelector
-                onSelect={handleWorkspaceSelect}
-                selectedWorkspace={selectedWorkspace || undefined}
-              />
+          <SidePanel
+            selectedWorkspace={selectedWorkspace}
+            selectedResources={selectedResources}
+            interval={interval}
+            onWorkspaceSelect={handleWorkspaceSelect}
+            onResourcesSelect={handleResourcesSelect}
+            onIntervalChange={handleIntervalChange}
+          />
 
-              {selectedWorkspace && (
-                <ResourceSelector
-                  workspace={selectedWorkspace}
-                  onSelectResources={handleResourcesSelect}
-                  selectedResources={selectedResources}
-                />
-              )}
-
-              <TimeRangeSelector
-                onIntervalChange={handleIntervalChange}
-                defaultInterval={interval}
-              />
-            </div>
-          </div>
-
-          <div className="col-span-1 md:col-span-2">
-            <div className="rounded-lg bg-white p-6 shadow">
-              {error ? (
-                <div className="flex h-64 items-center justify-center">
-                  <p className="text-red-500">{error}</p>
-                </div>
-              ) : (
-                <CostChart
-                  costData={costData}
-                  selectedResources={selectedResources}
-                  loadingResources={loadingResources}
-                />
-              )}
-            </div>
-          </div>
+          <CostView
+            costData={costData}
+            selectedResources={selectedResources}
+            loadingResources={loadingResources}
+            error={error}
+          />
         </div>
       </div>
     </div>
