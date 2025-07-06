@@ -13,9 +13,14 @@ interface CostViewProps {
   selectedResources: WorkspaceResource[];
   loadingResources?: string[];
   error?: string | null;
-};
+}
 
-export function CostView({ costData, selectedResources, loadingResources = [], error }: CostViewProps) {
+export function CostView({
+  costData,
+  selectedResources,
+  loadingResources = [],
+  error,
+}: CostViewProps) {
   const [activeView, setActiveView] = useState<ViewType>("chart");
 
   const hasData = costData.length > 0;

@@ -5,7 +5,7 @@ import type { Workspace, WorkspaceResource } from "../types/api";
 
 export function useWorkspaceResources(
   workspace: Workspace,
-  onSelectResources: (resources: WorkspaceResource[]) => void
+  onSelectResources: (resources: WorkspaceResource[]) => void,
 ) {
   const [resources, setResources] = useState<WorkspaceResource[]>([]);
   const [loading, setLoading] = useState(true);
