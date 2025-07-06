@@ -2,10 +2,21 @@ package account
 
 import (
 	"context"
-
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"github.com/databricks/databricks-sdk-go/config"
 	"github.com/de-tools/data-atlas/pkg/models/domain"
-	"github.com/de-tools/data-atlas/pkg/services/config"
-	"github.com/de-tools/data-atlas/pkg/services/workspace"
+	"github.com/de-tools/data-atlas/pkg/models/store"
+	"github.com/de-tools/data-atlas/pkg/services/account/workspace"
+	dataatlasconfig "github.com/de-tools/data-atlas/pkg/services/config"
+	"github.com/de-tools/data-atlas/pkg/store/pricing"
+	"github.com/de-tools/data-atlas/pkg/store/usage"
+	"log"
+	"net/http"
+	"strings"
+
+	_ "github.com/databricks/databricks-sql-go" // Required for databricks sql
 )
 
 type Explorer interface {
@@ -15,10 +26,10 @@ type Explorer interface {
 }
 
 type accountExplorer struct {
-	registry config.Registry
+	registry dataatlasconfig.Registry
 }
 
-func NewExplorer(registry config.Registry) Explorer {
+func NewExplorer(registry dataatlasconfig.Registry) Explorer {
 	return &accountExplorer{registry: registry}
 }
 
@@ -35,14 +46,80 @@ func (a *accountExplorer) ListWorkspaces(ctx context.Context) ([]domain.Workspac
 }
 
 func (a *accountExplorer) GetWorkspaceExplorer(ctx context.Context, ws domain.Workspace) (workspace.Explorer, error) {
-	//TODO implement me
-	panic("implement me")
+	cfg, err := a.registry.GetConfig(ctx, ws.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	return workspace.NewExplorer(cfg, ws), nil
 }
 
 func (a *accountExplorer) GetWorkspaceCostManager(
 	ctx context.Context,
 	ws domain.Workspace,
 ) (workspace.CostManager, error) {
-	//TODO implement me
-	panic("implement me")
+	cfg, err := a.registry.GetConfig(ctx, ws.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	warehouses, err := listWarehouses(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("listing warehouses: %w", err)
+	}
+
+	if len(warehouses) == 0 {
+		return nil, fmt.Errorf("no warehouses found for workspace %s", ws.Name)
+	}
+
+	defaultWarehouse := warehouses[0]
+	// Prepare the DSN for the Databricks SQL connection, removing any protocol prefix
+	host := strings.TrimPrefix(strings.TrimPrefix(cfg.Host, "https://"), "http://")
+	// Check if the host already has a port number, if not, add the default port for HTTPS
+	if !strings.Contains(host, ":") {
+		host = host + ":443"
+	}
+
+	dsn := fmt.Sprintf("token:%s@%s%s", cfg.Token, host, fmt.Sprintf("/sql/1.0/warehouses/%s", defaultWarehouse.ID))
+
+	db, err := sql.Open("databricks", dsn)
+	if err != nil {
+		log.Fatalf("failed to connect to Databricks: %v", err)
+	}
+
+	usageStore := usage.NewStore(db, pricing.NewStore())
+	costManager := workspace.NewCostManager(usageStore)
+
+	return costManager, nil
+}
+
+func listWarehouses(ctx context.Context, cfg *config.Config) ([]store.Warehouse, error) {
+	client := &http.Client{}
+
+	host := strings.TrimPrefix(strings.TrimPrefix(cfg.Host, "https://"), "http://")
+	url := fmt.Sprintf("https://%s/api/2.0/sql/warehouses", host)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", cfg.Token))
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("executing request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var response store.WarehousesResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+
+	return response.Warehouses, nil
 }

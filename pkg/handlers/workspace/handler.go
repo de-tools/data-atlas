@@ -2,7 +2,9 @@ package workspace
 
 import (
 	"encoding/json"
+	"github.com/de-tools/data-atlas/pkg/adapters"
 	"net/http"
+	"time"
 
 	"github.com/de-tools/data-atlas/pkg/services/account"
 
@@ -81,11 +83,34 @@ func (h *Handler) GetResourceCost(w http.ResponseWriter, r *http.Request) {
 	logger := zerolog.Ctx(ctx)
 	ws := chi.URLParam(r, "workspace")
 	resource := chi.URLParam(r, "resource")
-	interval := r.URL.Query().Get("interval")
 
-	var intervalNum int
-	if interval == "" {
-		intervalNum = defaultInterval
+	from := r.URL.Query().Get("from")
+	to := r.URL.Query().Get("to")
+
+	const dateLayout = "2006-01-02"
+
+	var endTime time.Time
+	if to == "" {
+		endTime = time.Now()
+	} else {
+		var err error
+		endTime, err = time.Parse(dateLayout, to)
+		if err != nil {
+			http.Error(w, "invalid 'to' date format. Expected format: YYYY-MM-DD", http.StatusBadRequest)
+			return
+		}
+	}
+
+	var startTime time.Time
+	if from == "" {
+		startTime = endTime.AddDate(0, 0, defaultInterval*-1)
+	} else {
+		var err error
+		startTime, err = time.Parse(dateLayout, from)
+		if err != nil {
+			http.Error(w, "invalid 'from' date format. Expected format: YYYY-MM-DD", http.StatusBadRequest)
+			return
+		}
 	}
 
 	costManager, err := h.explorer.GetWorkspaceCostManager(ctx, domain.Workspace{Name: ws})
@@ -99,10 +124,14 @@ func (h *Handler) GetResourceCost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	wsResource := domain.WorkspaceResource{WorkspaceName: ws, ResourceName: resource}
-	records, err := costManager.GetResourceCost(ctx, wsResource, intervalNum)
+	records, err := costManager.GetResourceCost(ctx, wsResource, startTime, endTime)
 
-	// TODO: introduce API response model
-	err = json.NewEncoder(w).Encode(records)
+	apiRecords := make([]api.ResourceCost, 0, len(records))
+	for _, r := range records {
+		apiRecords = append(apiRecords, adapters.MapResourceCostDomainToApi(r))
+	}
+
+	err = json.NewEncoder(w).Encode(apiRecords)
 	if err != nil {
 		logger.Error().
 			Err(err).
