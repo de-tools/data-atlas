@@ -67,8 +67,8 @@ func (u *usageStore) GetResourceUsage(
 		  sku_name
 		FROM system.billing.usage
 		WHERE usage_metadata.%[1]s IS NOT NULL
-		  AND usage_start_time >= timestamp(?1)
-		  AND usage_start_time < timestamp(?2)
+		  AND usage_start_time >= timestamp(?)
+		  AND usage_start_time < timestamp(?)
 		ORDER BY usage_start_time DESC
 	`, id)
 
