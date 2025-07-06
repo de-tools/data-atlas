@@ -10,6 +10,11 @@ interface CostChartProps {
 
 type ViewType = "table" | "chart";
 
+type TimeSeriesEntry = {
+  date: string;
+  [resourceName: string]: string | number;
+};
+
 function ViewSelector({
   activeView,
   onViewChange,
@@ -108,7 +113,7 @@ export function CostChart({ costData, selectedResources, loadingResources = [] }
     return totals;
   }, [costData]);
 
-  const timeSeriesData = useMemo(() => {
+  const timeSeriesData = useMemo((): TimeSeriesEntry[] => {
     const byDate: Record<string, Record<string, number>> = {};
     costData.forEach((cost) => {
       const date = new Date(cost.startTime).toISOString().slice(0, 10);
@@ -128,7 +133,7 @@ export function CostChart({ costData, selectedResources, loadingResources = [] }
     let mx = 0;
     timeSeriesData.forEach((entry) =>
       sortedResources.forEach((res) => {
-        mx = Math.max(mx, entry[res.name] || 0);
+        mx = Math.max(mx, (entry[res.name] as number) || 0);
       }),
     );
     return mx;
@@ -265,7 +270,7 @@ export function CostChart({ costData, selectedResources, loadingResources = [] }
                 const d = timeSeriesData
                   .map((entry, i) => {
                     const x = (i / (timeSeriesData.length - 1)) * innerWidth;
-                    const y = yScale(entry[res.name] || 0);
+                    const y = yScale((entry[res.name] as number) || 0);
                     return `${i === 0 ? "M" : "L"} ${x} ${y}`;
                   })
                   .join(" ");
@@ -275,7 +280,7 @@ export function CostChart({ costData, selectedResources, loadingResources = [] }
                     <path d={d} fill="none" stroke={colors[idx]} strokeWidth={2} />
                     {timeSeriesData.map((entry, i) => {
                       const x = (i / (timeSeriesData.length - 1)) * innerWidth;
-                      const y = yScale(entry[res.name] || 0);
+                      const y = yScale((entry[res.name] as number) || 0);
                       return (
                         <g key={`point-group-${res.name}-${i}`}>
                           <circle
@@ -289,7 +294,7 @@ export function CostChart({ costData, selectedResources, loadingResources = [] }
                               handleMouseEnter({
                                 resourceName: res.name,
                                 date: entry.date,
-                                value: entry[res.name] || 0,
+                                value: (entry[res.name] as number) || 0,
                                 x: x + margin.left,
                                 y,
                               })
@@ -378,7 +383,7 @@ export function CostChart({ costData, selectedResources, loadingResources = [] }
 
     const csvRows = timeSeriesData.map((entry) => {
       const date = formatDate(entry.date);
-      const values = sortedResources.map((r) => `$${(entry[r.name] || 0).toFixed(2)}`);
+      const values = sortedResources.map((r) => `$${((entry[r.name] as number) || 0).toFixed(2)}`);
       return [date, ...values].join(",");
     });
 
@@ -420,7 +425,7 @@ export function CostChart({ costData, selectedResources, loadingResources = [] }
                 <td className="border p-2">{formatDate(entry.date)}</td>
                 {sortedResources.map((r) => (
                   <td key={r.name} className="border p-2">
-                    ${(entry[r.name] || 0).toFixed(2)}
+                    ${((entry[r.name] as number) || 0).toFixed(2)}
                   </td>
                 ))}
               </tr>
@@ -451,14 +456,14 @@ export function CostChart({ costData, selectedResources, loadingResources = [] }
           {(() => {
             // Get all resource names (both with data and loading)
             const allResourceNames = new Set([
-              ...sortedResources.map(res => res.name),
-              ...loadingResources.filter(name => !name.includes("initial-load"))
+              ...sortedResources.map((res) => res.name),
+              ...loadingResources.filter((name) => !name.includes("initial-load")),
             ]);
 
             // Convert to array and sort alphabetically
             return Array.from(allResourceNames)
               .sort((a, b) => a.localeCompare(b))
-              .map(name => {
+              .map((name) => {
                 const hasData = Object.keys(resourceTotals).includes(name);
                 const isLoading = loadingResources.includes(name);
 
