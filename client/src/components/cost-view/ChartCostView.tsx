@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { WorkspaceResource } from "../../types/api";
-import type { TimeSeriesEntry } from "./CostView";
+import type { TimeSeriesEntry } from "../../types/domain";
 
 interface ChartCostViewProps {
   timeSeriesData: TimeSeriesEntry[];

@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 
 import { generateResourceColors } from "../../services/colorUtils";
+import { formatDate } from "../../services/dateUtils";
 import type { ResourceCost, WorkspaceResource } from "../../types/api";
+import type { TimeSeriesEntry } from "../../types/domain";
 import { ChartCostView } from "./ChartCostView";
 import { TableCostView } from "./TableCostView";
 import { ViewSelector, type ViewType } from "./ViewSelector";
@@ -11,23 +13,10 @@ interface CostViewProps {
   selectedResources: WorkspaceResource[];
   loadingResources?: string[];
   error?: string | null;
-}
-
-export type TimeSeriesEntry = {
-  date: string;
-  [resourceName: string]: string | number;
 };
 
 export function CostView({ costData, selectedResources, loadingResources = [], error }: CostViewProps) {
   const [activeView, setActiveView] = useState<ViewType>("chart");
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const day = date.getDate().toString().padStart(2, "0");
-    const month = (date.getMonth() + 1).toString().padStart(2, "0");
-    const year = date.getFullYear().toString().slice(2);
-    return `${day}/${month}/${year}`;
-  };
 
   const hasData = costData.length > 0;
 

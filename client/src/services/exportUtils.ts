@@ -1,5 +1,5 @@
-import type { TimeSeriesEntry } from "../components/cost-view/CostView";
 import type { WorkspaceResource } from "../types/api";
+import type { TimeSeriesEntry } from "../types/domain";
 
 /**
  * Exports time series data to a CSV file and triggers a download

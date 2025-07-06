@@ -1,6 +1,6 @@
 import { exportToCSV } from "../../services/exportUtils";
 import type { WorkspaceResource } from "../../types/api";
-import type { TimeSeriesEntry } from "./CostView";
+import type { TimeSeriesEntry } from "../../types/domain";
 
 interface TableCostViewProps {
   timeSeriesData: TimeSeriesEntry[];
