@@ -41,13 +41,13 @@ func (a *accountExplorer) ListWorkspaces(ctx context.Context) ([]domain.Workspac
 	}
 	var workspaces []domain.Workspace
 	for _, profile := range profiles {
-		workspaces = append(workspaces, domain.Workspace{Name: profile})
+		workspaces = append(workspaces, domain.Workspace{Name: profile.Name})
 	}
 	return workspaces, nil
 }
 
 func (a *accountExplorer) GetWorkspaceExplorer(ctx context.Context, ws domain.Workspace) (workspace.Explorer, error) {
-	cfg, err := a.registry.GetConfig(ctx, ws.Name)
+	cfg, err := a.registry.GetConfig(ctx, domain.ConfigProfile{Name: ws.Name, Type: domain.ProfileTypeWorkspace})
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func (a *accountExplorer) GetWorkspaceCostManager(
 	ctx context.Context,
 	ws domain.Workspace,
 ) (workspace.CostManager, error) {
-	cfg, err := a.registry.GetConfig(ctx, ws.Name)
+	cfg, err := a.registry.GetConfig(ctx, domain.ConfigProfile{Name: ws.Name, Type: domain.ProfileTypeWorkspace})
 	if err != nil {
 		return nil, err
 	}
