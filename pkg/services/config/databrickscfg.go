@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"fmt"
+
 	databricksconfig "github.com/databricks/databricks-sdk-go/config"
 	"github.com/de-tools/data-atlas/pkg/models/domain"
 	"github.com/rs/zerolog"

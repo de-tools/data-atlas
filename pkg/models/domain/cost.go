@@ -22,8 +22,8 @@ type ResourceDef struct {
 }
 
 type ResourceCost struct {
-	StartTime time.Time // 12.03.25
-	EndTime   time.Time // 14.03.25
+	StartTime time.Time
+	EndTime   time.Time
 	Resource  ResourceDef
 	Costs     []CostComponent
 }

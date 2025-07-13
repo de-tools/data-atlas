@@ -37,7 +37,12 @@ func NewStore(
 	}
 }
 
-func (u *usageStore) GetResourcesUsage(ctx context.Context, resources []string, startTime time.Time, endTime time.Time) ([]store.UsageRecord, error) {
+func (u *usageStore) GetResourcesUsage(
+	ctx context.Context,
+	resources []string,
+	startTime time.Time,
+	endTime time.Time,
+) ([]store.UsageRecord, error) {
 	logger := zerolog.Ctx(ctx)
 
 	var conditions []string
