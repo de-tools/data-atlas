@@ -36,7 +36,8 @@ func (w *workspaceCostManager) GetResourcesCost(ctx context.Context, res domain.
 			endTime.Format("2006-01-02"))
 	}
 
-	records, err := w.usageStore.GetResourcesUsage(ctx, res.Resources, startTime, endTime)
+	resourceTypes := validResourceTypes(res.Resources)
+	records, err := w.usageStore.GetResourcesUsage(ctx, resourceTypes, startTime, endTime)
 	if err != nil {
 		return nil, err
 	}
