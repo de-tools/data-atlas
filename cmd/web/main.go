@@ -2,14 +2,15 @@ package main
 
 import (
 	"fmt"
+	"net/http"
+	"os"
+	"os/user"
+
 	"github.com/de-tools/data-atlas/pkg/server"
 	"github.com/de-tools/data-atlas/pkg/services/account"
 	"github.com/de-tools/data-atlas/pkg/services/config"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
-	"net/http"
-	"os"
-	"os/user"
 )
 
 var cfgPath string

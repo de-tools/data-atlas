@@ -2,7 +2,7 @@ run:
 	go run cmd/cli/main.go
 
 build:
-	go build -o cost cmd/cli/main.go
+	go build -o cost cmd/web/main.go
 
 test:
 	go test ./... -v

@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+
 	"github.com/databricks/databricks-sdk-go/config"
 
 	"github.com/de-tools/data-atlas/pkg/models/domain"

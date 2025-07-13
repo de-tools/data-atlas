@@ -2,10 +2,11 @@ package adapters
 
 import (
 	"fmt"
+	"maps"
+
 	"github.com/de-tools/data-atlas/pkg/models/api"
 	"github.com/de-tools/data-atlas/pkg/models/domain"
 	"github.com/de-tools/data-atlas/pkg/models/store"
-	"maps"
 )
 
 func MapStoreUsageRecordToDomainCost(usage store.UsageRecord) domain.ResourceCost {
