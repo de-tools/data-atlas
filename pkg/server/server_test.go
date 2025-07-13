@@ -3,12 +3,13 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"github.com/de-tools/data-atlas/pkg/services/account/workspace"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/de-tools/data-atlas/pkg/services/account/workspace"
 
 	"github.com/de-tools/data-atlas/pkg/models/api"
 	"github.com/de-tools/data-atlas/pkg/models/domain"

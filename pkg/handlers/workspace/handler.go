@@ -2,9 +2,10 @@ package workspace
 
 import (
 	"encoding/json"
-	"github.com/de-tools/data-atlas/pkg/adapters"
 	"net/http"
 	"time"
+
+	"github.com/de-tools/data-atlas/pkg/adapters"
 
 	"github.com/de-tools/data-atlas/pkg/services/account"
 

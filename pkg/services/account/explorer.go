@@ -5,6 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
+	"net/http"
+	"strings"
+
 	"github.com/databricks/databricks-sdk-go/config"
 	"github.com/de-tools/data-atlas/pkg/models/domain"
 	"github.com/de-tools/data-atlas/pkg/models/store"
@@ -12,9 +16,6 @@ import (
 	dataatlasconfig "github.com/de-tools/data-atlas/pkg/services/config"
 	"github.com/de-tools/data-atlas/pkg/store/pricing"
 	"github.com/de-tools/data-atlas/pkg/store/usage"
-	"log"
-	"net/http"
-	"strings"
 
 	_ "github.com/databricks/databricks-sql-go" // Required for databricks sql
 )
