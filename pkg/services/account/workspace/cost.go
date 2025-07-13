@@ -12,9 +12,9 @@ import (
 )
 
 type CostManager interface {
-	GetResourceCost(
+	GetResourcesCost(
 		ctx context.Context,
-		res domain.WorkspaceResource,
+		res domain.WorkspaceResources,
 		startTime, endTime time.Time,
 	) ([]domain.ResourceCost, error)
 }
@@ -29,18 +29,14 @@ func NewCostManager(usageStore usage.Store) CostManager {
 	}
 }
 
-func (w *workspaceCostManager) GetResourceCost(
-	ctx context.Context,
-	res domain.WorkspaceResource,
-	startTime, endTime time.Time,
-) ([]domain.ResourceCost, error) {
+func (w *workspaceCostManager) GetResourcesCost(ctx context.Context, res domain.WorkspaceResources, startTime, endTime time.Time) ([]domain.ResourceCost, error) {
 	if !startTime.Before(endTime) {
 		return nil, fmt.Errorf("invalid time range: start time (%s) must be before end time (%s)",
 			startTime.Format("2006-01-02"),
 			endTime.Format("2006-01-02"))
 	}
 
-	records, err := w.usageStore.GetResourceUsage(ctx, res.ResourceName, startTime, endTime)
+	records, err := w.usageStore.GetResourcesUsage(ctx, res.Resources, startTime, endTime)
 	if err != nil {
 		return nil, err
 	}
@@ -49,5 +45,6 @@ func (w *workspaceCostManager) GetResourceCost(
 	for _, record := range records {
 		costs = append(costs, adapters.MapStoreUsageRecordToDomainCost(record))
 	}
+
 	return costs, nil
 }

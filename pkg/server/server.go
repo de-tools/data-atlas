@@ -25,8 +25,6 @@ type Config struct {
 }
 
 func ConfigureRouter(config Config) *chi.Mux {
-	wsHandler := handlers.NewHandler(config.Dependencies.Account)
-
 	router := chi.NewRouter()
 
 	router.Use(dataatlasmiddleware.Logger(&config.Dependencies.Logger))
@@ -36,11 +34,8 @@ func ConfigureRouter(config Config) *chi.Mux {
 		w.Write([]byte("hello world"))
 	})
 
-	router.Route("/api/v1", func(r chi.Router) {
-		r.Get("/workspaces", wsHandler.ListWorkspaces)
-		r.Get("/workspaces/{workspace}/resources", wsHandler.ListResources)
-		r.Get("/workspaces/{workspace}/{resource}/cost", wsHandler.GetResourceCost)
-	})
+	workspaces := handlers.NewWorkspaceRouter(config.Dependencies.Account)
+	router.Mount("/api/v1", workspaces.Routes())
 
 	return router
 }
