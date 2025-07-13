@@ -51,9 +51,7 @@ func (cr *CfgRegistry) Init(ctx context.Context) error {
 			}
 
 			profile := domain.ConfigProfile{Name: profileName, Type: domain.ProfileTypeWorkspace}
-			if cfg, exists := cr.profileMap[profile]; !exists {
-				cr.profileMap[profile] = cfg
-			}
+			cr.profileMap[profile] = cfg
 		}
 	}
 	return nil
@@ -68,8 +66,10 @@ func (cr *CfgRegistry) GetProfiles(_ context.Context) ([]domain.ConfigProfile, e
 }
 
 func (cr *CfgRegistry) GetConfig(_ context.Context, profile domain.ConfigProfile) (*databricksconfig.Config, error) {
-	if cfg, exists := cr.profileMap[profile]; exists {
-		return cfg, nil
+	for key, value := range cr.profileMap {
+		if key.Name == profile.Name && key.Type == profile.Type {
+			return value, nil
+		}
 	}
 
 	return nil, fmt.Errorf("profile %s not found in %s", profile, cr.path)
@@ -90,6 +90,11 @@ func (cr *CfgRegistry) loadConfig(_ context.Context, profile string) (*databrick
 
 	if err != nil {
 		return nil, fmt.Errorf("%s %s profile: %w", cr.path, profile, err)
+	}
+
+	err = cfg.EnsureResolved()
+	if err != nil {
+		return nil, fmt.Errorf("ensuring config resolution for profile %s: %w", profile, err)
 	}
 
 	return cfg, nil

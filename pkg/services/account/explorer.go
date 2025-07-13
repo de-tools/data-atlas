@@ -81,7 +81,12 @@ func (a *accountExplorer) GetWorkspaceCostManager(
 		host = host + ":443"
 	}
 
-	dsn := fmt.Sprintf("token:%s@%s%s", cfg.Token, host, fmt.Sprintf("/sql/1.0/warehouses/%s", defaultWarehouse.ID))
+	token, err := getToken(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("getting token: %w", err)
+	}
+
+	dsn := fmt.Sprintf("token:%s@%s%s", token, host, fmt.Sprintf("/sql/1.0/warehouses/%s", defaultWarehouse.ID))
 
 	db, err := sql.Open("databricks", dsn)
 	if err != nil {
@@ -105,7 +110,12 @@ func listWarehouses(ctx context.Context, cfg *config.Config) ([]store.Warehouse,
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", cfg.Token))
+	token, err := getToken(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("getting token: %w", err)
+	}
+
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", token))
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -123,4 +133,26 @@ func listWarehouses(ctx context.Context, cfg *config.Config) ([]store.Warehouse,
 	}
 
 	return response.Warehouses, nil
+}
+
+func getToken(ctx context.Context, cfg *config.Config) (string, error) {
+	if cfg == nil {
+		return "", fmt.Errorf("config cannot be nil")
+	}
+
+	if cfg.Token != "" {
+		return cfg.Token, nil
+	}
+
+	ts := cfg.GetTokenSource()
+	if ts == nil {
+		return "", fmt.Errorf("no token source configured")
+	}
+
+	token, err := ts.Token(ctx)
+	if err != nil {
+		return "", fmt.Errorf("getting token: %w", err)
+	}
+
+	return token.AccessToken, nil
 }
