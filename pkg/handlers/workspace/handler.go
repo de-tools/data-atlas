@@ -1,7 +1,9 @@
 package workspace
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -17,126 +19,185 @@ import (
 
 const (
 	defaultInterval = 7 // 7 days ~ 1 week
+	dateLayout      = "02-01-2006"
 )
 
-type Handler struct {
+type Router struct {
 	explorer account.Explorer
 }
 
-func NewHandler(explorer account.Explorer) *Handler {
-	return &Handler{
+func NewWorkspaceRouter(explorer account.Explorer) *Router {
+	return &Router{
 		explorer: explorer,
 	}
 }
 
-func (h *Handler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	logger := zerolog.Ctx(ctx)
+func (r *Router) Routes() chi.Router {
+	router := chi.NewRouter()
+	router.Get("/workspaces", r.ListWorkspaces)
+	router.Get("/workspaces/{workspace}/resources", r.ListResources)
+	router.Get("/workspaces/{workspace}/{resource}/cost", r.GetResourceCost)
+	router.Get("/workspaces/{workspace}/metrics/cost", r.GetWorkspaceMetricsCost)
+	return router
+}
 
-	workspaces, err := h.explorer.ListWorkspaces(ctx)
-	var response []api.Workspace
+func (r *Router) ListWorkspaces(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+	workspaces, err := r.explorer.ListWorkspaces(ctx)
+	if err != nil {
+		handleError(ctx, w, http.StatusInternalServerError, err)
+		return
+	}
+
+	response := make([]api.Workspace, 0, len(workspaces))
 	for _, ws := range workspaces {
 		response = append(response, api.Workspace{Name: ws.Name})
 	}
 
-	err = json.NewEncoder(w).Encode(workspaces)
-
+	err = jsonResponse(w, response)
 	if err != nil {
-		logger.Error().
-			Err(err).
-			Msg("failed to encode workspaces")
+		handleError(ctx, w, http.StatusInternalServerError, err)
 	}
 }
 
-func (h *Handler) ListResources(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	logger := zerolog.Ctx(ctx)
+func (r *Router) ListResources(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
 
-	ws := chi.URLParam(r, "workspace")
-
-	wsExplorer, err := h.explorer.GetWorkspaceExplorer(ctx, domain.Workspace{Name: ws})
+	ws := getWorkspaceFromPath(req)
+	wsExplorer, err := r.explorer.GetWorkspaceExplorer(ctx, ws)
 	if err != nil {
-		logger.Error().
-			Err(err).
-			Str("ws", ws).
-			Msg("failed to get workspace explorer")
-		http.Error(w, "workspace not found", http.StatusNotFound)
+		handleError(ctx, w, http.StatusInternalServerError, err)
 		return
 	}
 
 	resources, err := wsExplorer.ListSupportedResources(ctx)
-	var response []api.WorkspaceResource
+	if err != nil {
+		handleError(ctx, w, http.StatusInternalServerError, err)
+		return
+	}
+
+	response := make([]api.WorkspaceResource, 0, len(resources))
 	for _, r := range resources {
 		response = append(response, api.WorkspaceResource{Name: r.ResourceName})
 	}
 
-	err = json.NewEncoder(w).Encode(response)
+	err = jsonResponse(w, response)
 	if err != nil {
-		logger.Error().
-			Err(err).
-			Str("ws", ws).
-			Msg("failed to encode workspace resources")
+		handleError(ctx, w, http.StatusInternalServerError, err)
 	}
 }
 
-func (h *Handler) GetResourceCost(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	logger := zerolog.Ctx(ctx)
-	ws := chi.URLParam(r, "workspace")
-	resource := chi.URLParam(r, "resource")
+func (r *Router) GetResourceCost(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+	ws := getWorkspaceFromPath(req)
+	resource := chi.URLParam(req, "resource")
 
-	from := r.URL.Query().Get("from")
-	to := r.URL.Query().Get("to")
-
-	const dateLayout = "2006-01-02"
-
-	var endTime time.Time
-	if to == "" {
-		endTime = time.Now()
-	} else {
-		var err error
-		endTime, err = time.Parse(dateLayout, to)
-		if err != nil {
-			http.Error(w, "invalid 'to' date format. Expected format: YYYY-MM-DD", http.StatusBadRequest)
-			return
-		}
-	}
-
-	var startTime time.Time
-	if from == "" {
-		startTime = endTime.AddDate(0, 0, defaultInterval*-1)
-	} else {
-		var err error
-		startTime, err = time.Parse(dateLayout, from)
-		if err != nil {
-			http.Error(w, "invalid 'from' date format. Expected format: YYYY-MM-DD", http.StatusBadRequest)
-			return
-		}
-	}
-
-	costManager, err := h.explorer.GetWorkspaceCostManager(ctx, domain.Workspace{Name: ws})
+	endTime, err := parseDateParam(req, "to", time.Now())
 	if err != nil {
-		logger.Error().
-			Err(err).
-			Str("ws", ws).
-			Msg("failed to get workspace cost manager")
-		http.Error(w, "workspace not found", http.StatusNotFound)
+		handleError(ctx, w, http.StatusBadRequest, err)
 		return
 	}
 
-	wsResource := domain.WorkspaceResource{WorkspaceName: ws, ResourceName: resource}
-	records, err := costManager.GetResourceCost(ctx, wsResource, startTime, endTime)
+	startTime, err := parseDateParam(req, "from", time.Now().AddDate(0, 0, -defaultInterval))
+	if err != nil {
+		handleError(ctx, w, http.StatusBadRequest, err)
+		return
+	}
+
+	costManager, err := r.explorer.GetWorkspaceCostManager(ctx, ws)
+	if err != nil {
+		handleError(ctx, w, http.StatusNotFound, err)
+		return
+	}
+
+	resources := domain.WorkspaceResources{WorkspaceName: ws.Name, Resources: []string{resource}}
+	records, err := costManager.GetResourcesCost(ctx, resources, startTime, endTime)
+	if err != nil {
+		handleError(ctx, w, http.StatusInternalServerError, err)
+		return
+	}
 
 	apiRecords := make([]api.ResourceCost, 0, len(records))
 	for _, r := range records {
 		apiRecords = append(apiRecords, adapters.MapResourceCostDomainToApi(r))
 	}
 
-	err = json.NewEncoder(w).Encode(apiRecords)
+	err = jsonResponse(w, apiRecords)
 	if err != nil {
-		logger.Error().
-			Err(err).
-			Str("ws", ws).
-			Msg("failed to encode resource cost")
+		handleError(ctx, w, http.StatusInternalServerError, err)
 	}
+}
+
+func (r *Router) GetWorkspaceMetricsCost(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+	ws := getWorkspaceFromPath(req)
+	resourceTypes := req.URL.Query()["resource_type"]
+
+	endTime, err := parseDateParam(req, "to", time.Now())
+	if err != nil {
+		handleError(ctx, w, http.StatusBadRequest, err)
+		return
+	}
+
+	startTime, err := parseDateParam(req, "from", time.Now().AddDate(0, 0, -defaultInterval))
+	if err != nil {
+		handleError(ctx, w, http.StatusBadRequest, err)
+		return
+	}
+
+	costManager, err := r.explorer.GetWorkspaceCostManager(ctx, ws)
+	if err != nil {
+		handleError(ctx, w, http.StatusNotFound, err)
+		return
+	}
+
+	resources := domain.WorkspaceResources{WorkspaceName: ws.Name, Resources: resourceTypes}
+	records, err := costManager.GetResourcesCost(ctx, resources, startTime, endTime)
+	if err != nil {
+		handleError(ctx, w, http.StatusInternalServerError, err)
+		return
+	}
+
+	apiRecords := make([]api.ResourceCost, 0, len(records))
+	for _, r := range records {
+		apiRecords = append(apiRecords, adapters.MapResourceCostDomainToApi(r))
+	}
+
+	err = jsonResponse(w, apiRecords)
+	if err != nil {
+		handleError(ctx, w, http.StatusInternalServerError, err)
+	}
+}
+
+func handleError(ctx context.Context, w http.ResponseWriter, statusCode int, err error) {
+	if err == nil {
+		return
+	}
+
+	l := zerolog.Ctx(ctx)
+	l.Error().Err(err).Msg("handler error")
+	http.Error(w, err.Error(), statusCode)
+}
+
+func jsonResponse(w http.ResponseWriter, data interface{}) error {
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(data)
+}
+
+func parseDateParam(r *http.Request, paramName string, defaultDate time.Time) (time.Time, error) {
+	param := r.URL.Query().Get(paramName)
+
+	if param == "" {
+		return defaultDate, nil
+	}
+
+	parsed, err := time.Parse(dateLayout, param)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid '%s' date format. Expected format: DD-MM-YYYY", paramName)
+	}
+	return parsed, nil
+}
+
+func getWorkspaceFromPath(r *http.Request) domain.Workspace {
+	return domain.Workspace{Name: chi.URLParam(r, "workspace")}
 }
