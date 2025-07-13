@@ -26,7 +26,7 @@ func main() {
 	defaultPath := fmt.Sprintf("%s/.databrickscfg", usr.HomeDir)
 
 	rootCmd.Flags().StringVarP(&cfgPath, "config", "c", defaultPath,
-		"Path to the databrickscfg folder")
+		"Path to the .databrickscfg file (default is $HOME/.databrickscfg)")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -34,15 +34,27 @@ func main() {
 	}
 }
 
-func runServer(_ *cobra.Command, _ []string) error {
+func runServer(cmd *cobra.Command, _ []string) error {
 	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
+	ctx := logger.WithContext(cmd.Context())
 
 	registry, err := config.NewRegistry(cfgPath)
+
 	if err != nil {
 		return fmt.Errorf("failed to create config registry: %w", err)
 	}
 
-	logger.Info().Msgf("Configuration found at %s", cfgPath)
+	err = registry.Init(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to initialize config registry: %w", err)
+	}
+
+	logger.Info().Msgf("Configuration found at `%s` successfully loaded.", cfgPath)
+	logger.Info().Msgf("Found the following profiles:")
+	profiles, _ := registry.GetProfiles(ctx)
+	for _, profile := range profiles {
+		logger.Info().Msgf("Name: `%s`, Type: `%s`", profile.Name, profile.Type)
+	}
 
 	mux := server.ConfigureRouter(server.Config{
 		Dependencies: server.Dependencies{
