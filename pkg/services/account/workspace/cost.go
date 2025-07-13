@@ -29,7 +29,11 @@ func NewCostManager(usageStore usage.Store) CostManager {
 	}
 }
 
-func (w *workspaceCostManager) GetResourcesCost(ctx context.Context, res domain.WorkspaceResources, startTime, endTime time.Time) ([]domain.ResourceCost, error) {
+func (w *workspaceCostManager) GetResourcesCost(
+	ctx context.Context,
+	res domain.WorkspaceResources,
+	startTime, endTime time.Time,
+) ([]domain.ResourceCost, error) {
 	if !startTime.Before(endTime) {
 		return nil, fmt.Errorf("invalid time range: start time (%s) must be before end time (%s)",
 			startTime.Format("2006-01-02"),

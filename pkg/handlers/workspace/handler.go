@@ -19,7 +19,7 @@ import (
 
 const (
 	defaultInterval = 7 // 7 days ~ 1 week
-	dateLayout      = "02.01.2006"
+	dateLayout      = "02-01-2006"
 )
 
 type Router struct {
@@ -49,7 +49,7 @@ func (r *Router) ListWorkspaces(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var response []api.Workspace
+	response := make([]api.Workspace, 0, len(workspaces))
 	for _, ws := range workspaces {
 		response = append(response, api.Workspace{Name: ws.Name})
 	}
@@ -76,7 +76,7 @@ func (r *Router) ListResources(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var response []api.WorkspaceResource
+	response := make([]api.WorkspaceResource, 0, len(resources))
 	for _, r := range resources {
 		response = append(response, api.WorkspaceResource{Name: r.ResourceName})
 	}
@@ -193,7 +193,7 @@ func parseDateParam(r *http.Request, paramName string, defaultDate time.Time) (t
 
 	parsed, err := time.Parse(dateLayout, param)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid '%s' date format. Expected format: DD.MM.YYYY", paramName)
+		return time.Time{}, fmt.Errorf("invalid '%s' date format. Expected format: DD-MM-YYYY", paramName)
 	}
 	return parsed, nil
 }
