@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/de-tools/data-atlas/pkg/store/pricing"
+	"github.com/de-tools/data-atlas/pkg/store/databrickssql/pricing"
 
 	"github.com/de-tools/data-atlas/pkg/models/store"
 	"github.com/rs/zerolog"

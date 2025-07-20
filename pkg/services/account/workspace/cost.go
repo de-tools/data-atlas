@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/de-tools/data-atlas/pkg/adapters"
-	"github.com/de-tools/data-atlas/pkg/store/usage"
+	"github.com/de-tools/data-atlas/pkg/store/databrickssql/usage"
 
+	"github.com/de-tools/data-atlas/pkg/adapters"
 	"github.com/de-tools/data-atlas/pkg/models/domain"
 )
 

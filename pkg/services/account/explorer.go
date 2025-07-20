@@ -9,15 +9,15 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/de-tools/data-atlas/pkg/store/databrickssql/pricing"
+	"github.com/de-tools/data-atlas/pkg/store/databrickssql/usage"
+
 	"github.com/databricks/databricks-sdk-go/config"
+	_ "github.com/databricks/databricks-sql-go" // Required for databricks sql
 	"github.com/de-tools/data-atlas/pkg/models/domain"
 	"github.com/de-tools/data-atlas/pkg/models/store"
 	"github.com/de-tools/data-atlas/pkg/services/account/workspace"
 	dataatlasconfig "github.com/de-tools/data-atlas/pkg/services/config"
-	"github.com/de-tools/data-atlas/pkg/store/pricing"
-	"github.com/de-tools/data-atlas/pkg/store/usage"
-
-	_ "github.com/databricks/databricks-sql-go" // Required for databricks sql
 )
 
 type Explorer interface {

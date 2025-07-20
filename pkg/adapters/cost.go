@@ -27,8 +27,26 @@ func MapStoreUsageRecordToDomainCost(usage store.UsageRecord) domain.ResourceCos
 			Rate:        usage.Rate,
 			TotalAmount: usage.Quantity * usage.Rate,
 			Currency:    usage.Currency,
+			SKU:         usage.SKU,
 			Description: fmt.Sprintf("DBUs consumed (SKU: %s)", usage.SKU),
 		}},
+	}
+}
+
+func MapDomainResourceCostToStoreUsageRecord(cost domain.ResourceCost) store.UsageRecord {
+	computeCost := cost.Costs[0]
+
+	return store.UsageRecord{
+		ID:        cost.Resource.Name,
+		Resource:  cost.Resource.Service,
+		StartTime: cost.StartTime,
+		EndTime:   cost.EndTime,
+		Quantity:  computeCost.Value,
+		Unit:      computeCost.Unit,
+		Rate:      computeCost.Rate,
+		Currency:  computeCost.Currency,
+		SKU:       computeCost.SKU,
+		Metadata:  maps.Clone(cost.Resource.Metadata),
 	}
 }
 
