@@ -9,7 +9,8 @@ type CostComponent struct {
 	TotalAmount float64 // Value * Rate
 	Rate        float64 // 0.0042
 	Currency    string  // USD
-	Description string  // "price for 2 x t4g.nano"
+	SKU         string
+	Description string // "price for 2 x t4g.nano"
 }
 
 type ResourceDef struct {
