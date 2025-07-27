@@ -16,19 +16,19 @@ func MapStoreWorkflowToDomain(w *store.Workflow) *domain.Workflow {
 		Status:            domain.WorkflowStatus(w.Status),
 		CreatedAt:         w.CreatedAt,
 		UpdatedAt:         w.UpdatedAt,
-		LastProcessedDate: w.LastProcessedDate,
+		LastProcessedDate: w.LastProcessedAt,
 		Error:             w.Error,
 	}
 }
 
 func MapDomainWorkflowToStore(dw *domain.Workflow) *store.Workflow {
 	return &store.Workflow{
-		ID:                dw.ID,
-		Workspace:         dw.Workspace,
-		Status:            string(dw.Status),
-		CreatedAt:         dw.CreatedAt,
-		UpdatedAt:         dw.UpdatedAt,
-		LastProcessedDate: dw.LastProcessedDate,
-		Error:             dw.Error,
+		ID:              dw.ID,
+		Workspace:       dw.Workspace,
+		Status:          string(dw.Status),
+		CreatedAt:       dw.CreatedAt,
+		UpdatedAt:       dw.UpdatedAt,
+		LastProcessedAt: dw.LastProcessedDate,
+		Error:           dw.Error,
 	}
 }

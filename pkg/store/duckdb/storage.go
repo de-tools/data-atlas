@@ -11,17 +11,31 @@ import (
 
 const WorkflowState = `
 	CREATE TABLE IF NOT EXISTS workflow_state (
-		id VARCHAR PRIMARY KEY,
 		workspace VARCHAR NOT NULL,
-		status VARCHAR  NOT NULL,
-		error TEXT,
 		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	    last_processed_record_at TIMESTAMP NULL
+	);
+`
+const UsageTableSchema = `
+	CREATE TABLE IF NOT EXISTS usage_records (
+		id VARCHAR NOT NULL,
+		workspace VARCHAR NOT NULL,
+		resource VARCHAR,
+		metadata JSON,
+		quantity DOUBLE,
+		unit VARCHAR,
+		sku VARCHAR,
+		rate DOUBLE,
+		currency VARCHAR,
+		start_time TIMESTAMP,
+		end_time TIMESTAMP,
+		PRIMARY KEY (workspace, id)
 	);
 `
 
 var bootQueries = []string{
 	WorkflowState,
+	UsageTableSchema,
 }
 
 type Settings struct {

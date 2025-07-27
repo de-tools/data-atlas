@@ -5,23 +5,23 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/de-tools/data-atlas/pkg/models/store"
+
 	"github.com/de-tools/data-atlas/pkg/services/account"
 
-	"github.com/de-tools/data-atlas/pkg/adapters"
 	"github.com/de-tools/data-atlas/pkg/models/domain"
 	"github.com/de-tools/data-atlas/pkg/store/duckdb/usage"
 	"github.com/de-tools/data-atlas/pkg/store/duckdb/workflow"
 )
 
 type Controller interface {
-	Register(ctx context.Context, wf domain.Workflow) error
-	List(ctx context.Context, status domain.WorkflowStatus) ([]domain.Workflow, error)
-	Cancel(ctx context.Context, id string) error
+	Start(ctx context.Context, workspace string) error
+	Cancel(ctx context.Context, workspace string) error
 }
 
 type workflowDescriptor struct {
 	cancelFunc context.CancelFunc
-	wf         *domain.Workflow
+	wf         *store.Workflow
 	runner     *Runner
 }
 
@@ -50,25 +50,22 @@ func NewController(
 }
 
 func (ctrl *DefaultController) Init(ctx context.Context) error {
-	workflows, err := ctrl.workflowStore.ListWorkflows(ctx, []string{
-		string(domain.WorkflowStatusPending),
-	})
-
+	workflows, err := ctrl.workflowStore.ListWorkflows(ctx, []string{})
 	if err != nil {
 		return err
 	}
 
 	for _, wf := range workflows {
-		w := adapters.MapStoreWorkflowToDomain(wf)
-		ctrl.startWorkflow(ctx, w)
+		ctrl.startWorkflow(ctx, wf)
 	}
 
 	return nil
 }
 
-func (ctrl *DefaultController) Register(ctx context.Context, wf *domain.Workflow) error {
-	wf.Status = domain.WorkflowStatusPending
-	err := ctrl.workflowStore.CreateWorkflow(ctx, adapters.MapDomainWorkflowToStore(wf))
+func (ctrl *DefaultController) Start(ctx context.Context, workspace string) error {
+	wf, err := ctrl.workflowStore.CreateWorkflow(ctx, store.WorkflowIdentity{
+		Workspace: workspace,
+	})
 	if err != nil {
 		return err
 	}
@@ -77,22 +74,22 @@ func (ctrl *DefaultController) Register(ctx context.Context, wf *domain.Workflow
 	return nil
 }
 
-func (ctrl *DefaultController) Cancel(_ context.Context, id string) error {
+func (ctrl *DefaultController) Cancel(_ context.Context, workspace string) error {
 	ctrl.mu.Lock()
 	defer ctrl.mu.Unlock()
 
-	desc, ok := ctrl.workflows[id]
+	desc, ok := ctrl.workflows[workspace]
 	if !ok {
-		return fmt.Errorf("workflow not running: %s", id)
+		return fmt.Errorf("workflow not running: %s", workspace)
 	}
 	desc.cancelFunc()
 	<-desc.runner.Done()
 
-	delete(ctrl.workflows, id)
+	delete(ctrl.workflows, workspace)
 	return nil
 }
 
-func (ctrl *DefaultController) startWorkflow(ctx context.Context, wf *domain.Workflow) {
+func (ctrl *DefaultController) startWorkflow(ctx context.Context, wf *store.Workflow) {
 	ctrl.mu.Lock()
 	defer ctrl.mu.Unlock()
 
@@ -105,12 +102,11 @@ func (ctrl *DefaultController) startWorkflow(ctx context.Context, wf *domain.Wor
 	}
 
 	runner := NewRunner(wf, ctrl.workflowStore, costExplorer, ctrl.embeddedUsageStore)
-	ctrl.workflows[wf.ID] = workflowDescriptor{
+	ctrl.workflows[wf.Workspace] = workflowDescriptor{
 		cancelFunc: cancel,
 		wf:         wf,
 		runner:     runner,
 	}
 
-	// TODO: consider using this for status updates
 	go runner.Run(ctx)
 }

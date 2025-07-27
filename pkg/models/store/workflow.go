@@ -3,11 +3,13 @@ package store
 import "time"
 
 type Workflow struct {
-	ID                string
-	Workspace         string
-	Status            string
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	LastProcessedDate time.Time
-	Error             *string
+	Account         string
+	Workspace       string
+	CreatedAt       time.Time
+	LastProcessedAt *time.Time
+	Error           *string
+}
+
+type WorkflowIdentity struct {
+	Workspace string
 }

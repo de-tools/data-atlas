@@ -2,6 +2,11 @@ package store
 
 import "time"
 
+type UsageStats struct {
+	RecordsCount    int64
+	FirstRecordTime *time.Time
+}
+
 type UsageRecord struct {
 	ID        string
 	Resource  string

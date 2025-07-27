@@ -86,3 +86,14 @@ func MapResourceDefinitionDomainToApi(def domain.ResourceDef) api.ResourceDef {
 		Metadata:    def.Metadata,
 	}
 }
+
+func MapUsageStatsStoreToDomain(stats *store.UsageStats) *domain.UsageStats {
+	if stats == nil {
+		return nil
+	}
+
+	return &domain.UsageStats{
+		RecordsCount:    stats.RecordsCount,
+		FirstRecordTime: stats.FirstRecordTime,
+	}
+}

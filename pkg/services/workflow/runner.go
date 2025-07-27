@@ -2,6 +2,9 @@ package workflow
 
 import (
 	"context"
+	"time"
+
+	"github.com/databricks/databricks-sql-go/logger"
 
 	"github.com/de-tools/data-atlas/pkg/adapters"
 	"github.com/de-tools/data-atlas/pkg/models/domain"
@@ -14,15 +17,28 @@ import (
 )
 
 type Runner struct {
-	workflow      *domain.Workflow
+	workflow      *store.Workflow
 	workflowStore workflow.Store
 	costManager   workspace.CostManager
 	usageStore    usage.Store
 	done          chan struct{}
+	progress      chan RunnerProgress
+	config        RunnerConfig
+}
+
+type RunnerConfig struct {
+	BatchInterval time.Duration
+	SleepInterval time.Duration
+}
+
+type RunnerProgress struct {
+	ProcessedRecords int64
+	TotalRecords     int64
+	LastProcessedAt  time.Time
 }
 
 func NewRunner(
-	wf *domain.Workflow,
+	wf *store.Workflow,
 	workflowStore workflow.Store,
 	costManager workspace.CostManager,
 	usageStore usage.Store,
@@ -33,57 +49,61 @@ func NewRunner(
 		costManager:   costManager,
 		usageStore:    usageStore,
 		done:          make(chan struct{}),
+		progress:      make(chan RunnerProgress, 100),
+		config: RunnerConfig{
+			BatchInterval: 7 * 24 * time.Hour,
+			SleepInterval: 10 * time.Second,
+		},
 	}
 }
 
 func (r *Runner) Done() <-chan struct{} {
 	return r.done
 }
+
+func (r *Runner) Progress() <-chan RunnerProgress {
+	return r.progress
+}
+
 func (r *Runner) Run(ctx context.Context) {
-	logger := zerolog.Ctx(ctx)
-
-	// 🛑❌🚀✅⚠️💥
+	zerolog.Ctx(ctx).With().Str("workspace", r.workflow.Workspace).Logger()
 	defer close(r.done)
-	endDate := r.workflow.LastProcessedDate
-	resources := maps.Keys(workspace.SupportedResources)
+	defer close(r.progress)
 
+	lastProcessedTime := r.workflow.LastProcessedAt
+	stats, err := r.costManager.GetUsageStats(ctx, lastProcessedTime)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to get usage stats")
+		return
+	}
+
+	startTime := *stats.FirstRecordTime
+	resources := maps.Keys(workspace.SupportedResources)
+	ws := r.workflow.Workspace
+	processedRecords := int64(0)
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Printf("Workflow %s stopped", r.workflow.ID)
-			err := r.workflowStore.UpdateWorkflowStatus(ctx,
-				r.workflow.ID,
-				string(domain.WorkflowStatusCancelled),
-				nil,
-			)
-			if err != nil {
-				logger.Err(err).
-					Str("workflow_id", r.workflow.ID).
-					Msg("failed to update workflow status")
-			}
+			logger.Info().Msg("Workflow sync stopped")
 			return
 		default:
-			startDate := endDate.AddDate(0, 0, -7) // Go back 7 days
+			endTime := startTime.Add(r.config.BatchInterval)
 
 			records, err := r.costManager.GetResourcesCost(ctx, domain.WorkspaceResources{
-				WorkspaceName: r.workflow.Workspace,
+				WorkspaceName: ws,
 				Resources:     resources,
-			}, startDate, endDate)
+			}, startTime, endTime)
 
 			if err != nil {
-				errorMsg := err.Error()
-				if err := r.workflowStore.UpdateWorkflowStatus(ctx, r.workflow.ID, string(domain.WorkflowStatusFailed), &errorMsg); err != nil {
-					logger.Printf("Failed to mark workflow %s as failed: %v", r.workflow.ID, err)
-				}
-				break
+				logger.Error().Err(err).Msg("failed to get usage records")
+				time.Sleep(r.config.SleepInterval)
+				continue
 			}
 
-			// No more records found, mark as finished
 			if len(records) == 0 {
-				if err := r.workflowStore.UpdateWorkflowStatus(ctx, r.workflow.ID, string(domain.WorkflowStatusFinished), nil); err != nil {
-					logger.Printf("Failed to mark workflow %s as finished: %v", r.workflow.ID, err)
-				}
-				break
+				logger.Info().Msg("no records found")
+				time.Sleep(r.config.SleepInterval)
+				continue
 			}
 
 			dbRecords := make([]store.UsageRecord, len(records))
@@ -91,15 +111,29 @@ func (r *Runner) Run(ctx context.Context) {
 				dbRecords = append(dbRecords, adapters.MapDomainResourceCostToStoreUsageRecord(record))
 			}
 
-			err = r.usageStore.Add(ctx, dbRecords)
-			if err == nil {
-				r.workflow.LastProcessedDate = endDate
-				if err = r.workflowStore.ProgressWorkflow(ctx, r.workflow.ID, endDate); err != nil {
-					logger.Printf("Failed to update workflow %s last processed date: %v", r.workflow.ID, err)
-				}
-
-				endDate = startDate
+			// TODO: These 2: usageStore.Add & workflowStore.UpdateWorkflow ideally should be done in a single transaction.
+			// Store records in DuckDB
+			if err := r.usageStore.Add(ctx, ws, dbRecords); err != nil {
+				logger.Error().Err(err).Msg("failed to store usage records")
+				continue
 			}
+
+			// Update workflow state in DuckDB
+			if err := r.workflowStore.UpdateWorkflow(ctx, store.WorkflowIdentity{
+				Workspace: ws,
+			}, endTime); err != nil {
+				logger.Error().Err(err).Msg("failed to update workflow state")
+				continue
+			}
+
+			processedRecords += int64(len(records))
+			r.progress <- RunnerProgress{
+				ProcessedRecords: processedRecords,
+				TotalRecords:     stats.RecordsCount,
+				LastProcessedAt:  endTime,
+			}
+
+			startTime = endTime
 		}
 	}
 }
