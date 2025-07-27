@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/de-tools/data-atlas/pkg/store/duckdb"
+
 	"github.com/de-tools/data-atlas/pkg/models/store"
 	"github.com/rs/zerolog"
 )
@@ -102,7 +104,15 @@ func (d *defaultStore) UpdateWorkflow(
         WHERE 
             workspace = $2`
 
-	result, err := d.db.ExecContext(ctx, query, lastProcessedAt, workflow.Workspace)
+	tx := duckdb.GetTransaction(ctx)
+	var result sql.Result
+	var err error
+	if tx == nil {
+		result, err = d.db.ExecContext(ctx, query, lastProcessedAt, workflow.Workspace)
+	} else {
+		result, err = tx.ExecContext(ctx, query, lastProcessedAt, workflow.Workspace)
+	}
+
 	if err != nil {
 		return fmt.Errorf("update workflow: %w", err)
 	}

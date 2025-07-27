@@ -269,3 +269,4 @@ dist-ssr
 *.sln
 *.sw?
 cost
+*.db

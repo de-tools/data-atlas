@@ -71,7 +71,7 @@ func runServer(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create usage store: %w", err)
 	}
-	workflowCtrl := workflow.NewController(accountExplorer, workflowStore, usageStore)
+	workflowCtrl := workflow.NewController(db, accountExplorer, workflowStore, usageStore)
 	err = workflowCtrl.Init(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to initialize workflow controller: %w", err)

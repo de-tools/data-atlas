@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/de-tools/data-atlas/pkg/store/duckdb"
+
 	"github.com/de-tools/data-atlas/pkg/models/store"
 )
 
@@ -31,11 +33,14 @@ func (u *usageStore) Add(ctx context.Context, workspace string, records []store.
 		return nil
 	}
 
-	tx, err := u.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
+	tx := duckdb.GetTransaction(ctx)
+	if tx == nil {
+		tx, err := u.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin transaction: %w", err)
+		}
+		defer tx.Rollback()
 	}
-	defer tx.Rollback()
 
 	stmt, err := tx.PrepareContext(ctx, `
         INSERT INTO usage_records (

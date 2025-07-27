@@ -2,7 +2,10 @@ package workflow
 
 import (
 	"context"
+	"database/sql"
 	"time"
+
+	"github.com/de-tools/data-atlas/pkg/store/duckdb"
 
 	"github.com/databricks/databricks-sql-go/logger"
 
@@ -18,6 +21,7 @@ import (
 
 type Runner struct {
 	workflow      *store.Workflow
+	db            *sql.DB
 	workflowStore workflow.Store
 	costManager   workspace.CostManager
 	usageStore    usage.Store
@@ -39,12 +43,14 @@ type RunnerProgress struct {
 
 func NewRunner(
 	wf *store.Workflow,
+	db *sql.DB,
 	workflowStore workflow.Store,
 	costManager workspace.CostManager,
 	usageStore usage.Store,
 ) *Runner {
 	return &Runner{
 		workflow:      wf,
+		db:            db,
 		workflowStore: workflowStore,
 		costManager:   costManager,
 		usageStore:    usageStore,
@@ -111,15 +117,22 @@ func (r *Runner) Run(ctx context.Context) {
 				dbRecords = append(dbRecords, adapters.MapDomainResourceCostToStoreUsageRecord(record))
 			}
 
-			// TODO: These 2: usageStore.Add & workflowStore.UpdateWorkflow ideally should be done in a single transaction.
+			tx, err := r.db.BeginTx(ctx, nil)
+			if err != nil {
+				logger.Error().Err(err).Msg("failed to instantiate transaction")
+				time.Sleep(r.config.SleepInterval)
+				continue
+			}
+
+			ctxWithTx := duckdb.WithTransaction(ctx, tx)
 			// Store records in DuckDB
-			if err := r.usageStore.Add(ctx, ws, dbRecords); err != nil {
+			if err := r.usageStore.Add(ctxWithTx, ws, dbRecords); err != nil {
 				logger.Error().Err(err).Msg("failed to store usage records")
 				continue
 			}
 
 			// Update workflow state in DuckDB
-			if err := r.workflowStore.UpdateWorkflow(ctx, store.WorkflowIdentity{
+			if err := r.workflowStore.UpdateWorkflow(ctxWithTx, store.WorkflowIdentity{
 				Workspace: ws,
 			}, endTime); err != nil {
 				logger.Error().Err(err).Msg("failed to update workflow state")

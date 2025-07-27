@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"sync"
 
@@ -27,6 +28,7 @@ type workflowDescriptor struct {
 
 type DefaultController struct {
 	workflowStore      workflow.Store
+	db                 *sql.DB
 	explorer           account.Explorer
 	embeddedUsageStore usage.Store
 
@@ -35,11 +37,13 @@ type DefaultController struct {
 }
 
 func NewController(
+	db *sql.DB,
 	explorer account.Explorer,
 	workflowStore workflow.Store,
 	embeddedUsageStore usage.Store,
 ) *DefaultController {
 	ctrl := &DefaultController{
+		db:                 db,
 		workflowStore:      workflowStore,
 		explorer:           explorer,
 		embeddedUsageStore: embeddedUsageStore,
@@ -101,7 +105,7 @@ func (ctrl *DefaultController) startWorkflow(ctx context.Context, wf *store.Work
 		return
 	}
 
-	runner := NewRunner(wf, ctrl.workflowStore, costExplorer, ctrl.embeddedUsageStore)
+	runner := NewRunner(wf, ctrl.db, ctrl.workflowStore, costExplorer, ctrl.embeddedUsageStore)
 	ctrl.workflows[wf.Workspace] = workflowDescriptor{
 		cancelFunc: cancel,
 		wf:         wf,
