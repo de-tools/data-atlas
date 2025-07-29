@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/de-tools/data-atlas/pkg/store/pricing"
+	"github.com/de-tools/data-atlas/pkg/store/databrickssql/pricing"
 
 	"github.com/de-tools/data-atlas/pkg/models/store"
 	"github.com/rs/zerolog"
@@ -20,6 +20,7 @@ type Store interface {
 		startTime time.Time,
 		endTime time.Time,
 	) ([]store.UsageRecord, error)
+	GetUsageStats(ctx context.Context, startTime *time.Time) (*store.UsageStats, error)
 }
 
 type usageStore struct {
@@ -35,6 +36,46 @@ func NewStore(
 		db:           db,
 		pricingStore: pricingStore,
 	}
+}
+
+func (u *usageStore) GetUsageStats(ctx context.Context, startTime *time.Time) (*store.UsageStats, error) {
+	logger := zerolog.Ctx(ctx)
+
+	query := `
+        SELECT 
+            COUNT(*) as total_records,
+            MIN(usage_start_time) as earliest_record
+        FROM system.billing.usage`
+
+	var totalRecords int64
+	var earliestRecord sql.NullTime
+	var err error
+	if startTime != nil {
+		query += " WHERE usage_start_time >= ?"
+		err = u.db.QueryRowContext(ctx, query, startTime).Scan(&totalRecords, &earliestRecord)
+	} else {
+		err = u.db.QueryRowContext(ctx, query).Scan(&totalRecords, &earliestRecord)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("get usage stats failed: %w", err)
+	}
+
+	var earliestTime *time.Time
+	if earliestRecord.Valid {
+		t := earliestRecord.Time
+		earliestTime = &t
+	}
+
+	logger.Debug().
+		Int64("total_records", totalRecords).
+		Time("earliest_record", earliestRecord.Time).
+		Msg("retrieved usage stats")
+
+	return &store.UsageStats{
+		RecordsCount:    totalRecords,
+		FirstRecordTime: earliestTime,
+	}, nil
 }
 
 func (u *usageStore) GetResourcesUsage(

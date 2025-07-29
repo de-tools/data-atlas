@@ -2,6 +2,11 @@ package domain
 
 import "time"
 
+type UsageStats struct {
+	RecordsCount    int64
+	FirstRecordTime *time.Time
+}
+
 type CostComponent struct {
 	Type        string  // compute
 	Value       float64 // 2
@@ -9,6 +14,7 @@ type CostComponent struct {
 	TotalAmount float64 // Value * Rate
 	Rate        float64 // 0.0042
 	Currency    string  // USD
+	SKU         string  // PREMIUM_DATABRICKS_STORAGE_EUROPE_IRELAND
 	Description string  // "price for 2 x t4g.nano"
 }
 

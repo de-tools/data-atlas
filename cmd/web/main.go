@@ -6,6 +6,11 @@ import (
 	"os"
 	"os/user"
 
+	"github.com/de-tools/data-atlas/pkg/services/workflow"
+	"github.com/de-tools/data-atlas/pkg/store/duckdb"
+	duckdbusage "github.com/de-tools/data-atlas/pkg/store/duckdb/usage"
+	duckdbworkflow "github.com/de-tools/data-atlas/pkg/store/duckdb/workflow"
+
 	"github.com/de-tools/data-atlas/pkg/server"
 	"github.com/de-tools/data-atlas/pkg/services/account"
 	"github.com/de-tools/data-atlas/pkg/services/config"
@@ -49,6 +54,29 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("failed to initialize config registry: %w", err)
 	}
 
+	accountExplorer := account.NewExplorer(registry)
+
+	db, err := duckdb.NewDB(duckdb.Settings{
+		DbPath: "data-atlas.db",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create DuckDB instance: %w", err)
+	}
+
+	workflowStore, err := duckdbworkflow.NewStore(db)
+	if err != nil {
+		return fmt.Errorf("failed to create workflow store: %w", err)
+	}
+	usageStore, err := duckdbusage.NewStore(db)
+	if err != nil {
+		return fmt.Errorf("failed to create usage store: %w", err)
+	}
+	workflowCtrl := workflow.NewController(db, accountExplorer, workflowStore, usageStore)
+	err = workflowCtrl.Init(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to initialize workflow controller: %w", err)
+	}
+
 	logger.Info().Msgf("Configuration found at `%s` successfully loaded.", cfgPath)
 	logger.Info().Msgf("Found the following profiles:")
 	profiles, _ := registry.GetProfiles(ctx)
@@ -58,7 +86,7 @@ func runServer(cmd *cobra.Command, _ []string) error {
 
 	mux := server.ConfigureRouter(server.Config{
 		Dependencies: server.Dependencies{
-			Account: account.NewExplorer(registry),
+			Account: accountExplorer,
 			Logger:  logger,
 		},
 	})
