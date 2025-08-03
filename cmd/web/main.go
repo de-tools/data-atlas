@@ -86,8 +86,9 @@ func runServer(cmd *cobra.Command, _ []string) error {
 
 	mux := server.ConfigureRouter(server.Config{
 		Dependencies: server.Dependencies{
-			Account: accountExplorer,
-			Logger:  logger,
+			Account:            accountExplorer,
+			WorkflowController: workflowCtrl,
+			Logger:             logger,
 		},
 	})
 

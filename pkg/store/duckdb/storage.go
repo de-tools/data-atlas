@@ -13,7 +13,8 @@ const WorkflowState = `
 	CREATE TABLE IF NOT EXISTS workflow_state (
 		workspace VARCHAR NOT NULL,
 		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	    last_processed_record_at TIMESTAMP NULL
+	    last_processed_record_at TIMESTAMP NULL,
+		PRIMARY KEY (workspace)
 	);
 `
 const UsageTableSchema = `
@@ -29,7 +30,7 @@ const UsageTableSchema = `
 		currency VARCHAR,
 		start_time TIMESTAMP,
 		end_time TIMESTAMP,
-		PRIMARY KEY (workspace, id)
+		PRIMARY KEY (id, workspace)
 	);
 `
 

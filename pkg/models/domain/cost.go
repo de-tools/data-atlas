@@ -28,6 +28,7 @@ type ResourceDef struct {
 }
 
 type ResourceCost struct {
+	ID        string
 	StartTime time.Time
 	EndTime   time.Time
 	Resource  ResourceDef

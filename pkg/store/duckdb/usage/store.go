@@ -34,21 +34,22 @@ func (u *usageStore) Add(ctx context.Context, workspace string, records []store.
 	}
 
 	tx := duckdb.GetTransaction(ctx)
+	query := `
+		INSERT INTO usage_records (
+			id, workspace, resource, metadata, quantity, unit, 
+			sku, rate, currency, start_time, end_time
+		) VALUES (
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+		)`
+
+	var stmt *sql.Stmt
+	var err error
 	if tx == nil {
-		tx, err := u.db.BeginTx(ctx, nil)
-		if err != nil {
-			return fmt.Errorf("begin transaction: %w", err)
-		}
-		defer tx.Rollback()
+		stmt, err = tx.PrepareContext(ctx, query)
+	} else {
+		stmt, err = u.db.PrepareContext(ctx, query)
 	}
 
-	stmt, err := tx.PrepareContext(ctx, `
-        INSERT INTO usage_records (
-            id, workspace, resource, metadata, quantity, unit, 
-            sku, rate, currency, start_time, end_time
-        ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        )`)
 	if err != nil {
 		return fmt.Errorf("prepare statement: %w", err)
 	}
@@ -77,10 +78,6 @@ func (u *usageStore) Add(ctx context.Context, workspace string, records []store.
 		if err != nil {
 			return fmt.Errorf("insert record: %w", err)
 		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return nil
