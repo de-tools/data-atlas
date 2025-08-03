@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -72,18 +73,35 @@ func (d *defaultStore) ListWorkflows(ctx context.Context, workspaces []string) (
 }
 
 func (d *defaultStore) CreateWorkflow(ctx context.Context, workflow store.WorkflowIdentity) (*store.Workflow, error) {
+	query := `
+        SELECT workspace, created_at, last_processed_record_at 
+        FROM workflow_state 
+        WHERE workspace = $1`
+
+	var existing store.Workflow
+	err := d.db.QueryRowContext(ctx, query, workflow.Workspace).Scan(
+		&existing.Workspace,
+		&existing.CreatedAt,
+		&existing.LastProcessedAt,
+	)
+
+	if err == nil {
+		return &existing, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("query existing workflow: %w", err)
+	}
+
 	wf := &store.Workflow{
 		Workspace: workflow.Workspace,
 		CreatedAt: time.Now(),
 	}
 
-	query := `
-	INSERT INTO 
-	    workflow_state (workspace, created_at) 
-  	VALUES 
-		($1, $2)`
+	insertQuery := `
+        INSERT INTO workflow_state (workspace, created_at) 
+        VALUES ($1, $2)`
 
-	_, err := d.db.ExecContext(ctx, query, wf.Workspace, wf.CreatedAt, wf.LastProcessedAt)
+	_, err = d.db.ExecContext(ctx, insertQuery, wf.Workspace, wf.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("insert workflow: %w", err)
 	}

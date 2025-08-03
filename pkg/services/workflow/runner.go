@@ -3,20 +3,17 @@ package workflow
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/de-tools/data-atlas/pkg/store/duckdb"
 
-	"github.com/databricks/databricks-sql-go/logger"
-
 	"github.com/de-tools/data-atlas/pkg/adapters"
-	"github.com/de-tools/data-atlas/pkg/models/domain"
 	"github.com/de-tools/data-atlas/pkg/models/store"
 	"github.com/de-tools/data-atlas/pkg/services/account/workspace"
 	"github.com/de-tools/data-atlas/pkg/store/duckdb/usage"
 	"github.com/de-tools/data-atlas/pkg/store/duckdb/workflow"
 	"github.com/rs/zerolog"
-	"golang.org/x/exp/maps"
 )
 
 type Runner struct {
@@ -72,7 +69,7 @@ func (r *Runner) Progress() <-chan RunnerProgress {
 }
 
 func (r *Runner) Run(ctx context.Context) {
-	zerolog.Ctx(ctx).With().Str("workspace", r.workflow.Workspace).Logger()
+	logger := zerolog.Ctx(ctx).With().Str("workspace", r.workflow.Workspace).Logger()
 	defer close(r.done)
 	defer close(r.progress)
 
@@ -84,7 +81,6 @@ func (r *Runner) Run(ctx context.Context) {
 	}
 
 	startTime := *stats.FirstRecordTime
-	resources := maps.Keys(workspace.SupportedResources)
 	ws := r.workflow.Workspace
 	processedRecords := int64(0)
 	for {
@@ -93,53 +89,39 @@ func (r *Runner) Run(ctx context.Context) {
 			logger.Info().Msg("Workflow sync stopped")
 			return
 		default:
+			time.Sleep(r.config.SleepInterval)
+
 			endTime := startTime.Add(r.config.BatchInterval)
 
-			records, err := r.costManager.GetResourcesCost(ctx, domain.WorkspaceResources{
-				WorkspaceName: ws,
-				Resources:     resources,
-			}, startTime, endTime)
+			records, err := r.costManager.GetUsage(ctx, startTime, endTime)
 
 			if err != nil {
-				logger.Error().Err(err).Msg("failed to get usage records")
-				time.Sleep(r.config.SleepInterval)
+				logger.Error().Err(err).Msg("sync, failed to get usage records")
 				continue
 			}
 
 			if len(records) == 0 {
-				logger.Info().Msg("no records found")
-				time.Sleep(r.config.SleepInterval)
+				logger.Info().Msg("sync, no records found")
 				continue
 			}
 
-			dbRecords := make([]store.UsageRecord, len(records))
+			dbRecords := make(map[string]store.UsageRecord)
 			for _, record := range records {
-				dbRecords = append(dbRecords, adapters.MapDomainResourceCostToStoreUsageRecord(record))
+				// Super simple protection against duplicate records
+				dbRecords[record.ID] = adapters.MapDomainResourceCostToStoreUsageRecord(record)
 			}
 
-			tx, err := r.db.BeginTx(ctx, nil)
+			filteredDbRecords := make([]store.UsageRecord, 0)
+			for _, record := range dbRecords {
+				filteredDbRecords = append(filteredDbRecords, record)
+			}
+
+			err = r.updateWorkflow(ctx, ws, endTime, filteredDbRecords)
 			if err != nil {
-				logger.Error().Err(err).Msg("failed to instantiate transaction")
-				time.Sleep(r.config.SleepInterval)
 				continue
 			}
 
-			ctxWithTx := duckdb.WithTransaction(ctx, tx)
-			// Store records in DuckDB
-			if err := r.usageStore.Add(ctxWithTx, ws, dbRecords); err != nil {
-				logger.Error().Err(err).Msg("failed to store usage records")
-				continue
-			}
-
-			// Update workflow state in DuckDB
-			if err := r.workflowStore.UpdateWorkflow(ctxWithTx, store.WorkflowIdentity{
-				Workspace: ws,
-			}, endTime); err != nil {
-				logger.Error().Err(err).Msg("failed to update workflow state")
-				continue
-			}
-
-			processedRecords += int64(len(records))
+			processedRecords += int64(len(filteredDbRecords))
 			r.progress <- RunnerProgress{
 				ProcessedRecords: processedRecords,
 				TotalRecords:     stats.RecordsCount,
@@ -147,6 +129,43 @@ func (r *Runner) Run(ctx context.Context) {
 			}
 
 			startTime = endTime
+			logger.Info().Int64("processed_records", processedRecords).Msg("sync, processed records")
 		}
 	}
+}
+
+func (r *Runner) updateWorkflow(ctx context.Context, ws string, endTime time.Time, records []store.UsageRecord) error {
+	logger := zerolog.Ctx(ctx).With().Str("workspace", r.workflow.Workspace).Logger()
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("sync, failed to instantiate transaction")
+		return err
+	}
+
+	// Defer rollback - will be no-op if transaction is committed
+	defer tx.Rollback()
+
+	ctxWithTx := duckdb.WithTransaction(ctx, tx)
+	// Store records in DuckDB
+	if err := r.usageStore.Add(ctxWithTx, ws, records); err != nil {
+		logger.Error().Err(err).Msg("sync, failed to store usage records")
+		return err
+	}
+
+	// Update workflow state in DuckDB
+	if err := r.workflowStore.UpdateWorkflow(ctxWithTx, store.WorkflowIdentity{
+		Workspace: ws,
+	}, endTime); err != nil {
+		logger.Error().Err(err).Msg("sync, failed to update workflow state")
+		return err
+	}
+
+	// Commit transaction only after all operations succeed
+	if err := tx.Commit(); err != nil {
+		logger.Error().Err(err).Msg("sync, failed to commit workflow update")
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
 }

@@ -11,6 +11,7 @@ import (
 
 func MapStoreUsageRecordToDomainCost(usage store.UsageRecord) domain.ResourceCost {
 	return domain.ResourceCost{
+		ID:        usage.ID,
 		StartTime: usage.StartTime,
 		EndTime:   usage.EndTime,
 		Resource: domain.ResourceDef{

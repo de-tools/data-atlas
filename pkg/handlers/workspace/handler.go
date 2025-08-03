@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/de-tools/data-atlas/pkg/services/workflow"
+
 	"github.com/de-tools/data-atlas/pkg/adapters"
 
 	"github.com/de-tools/data-atlas/pkg/services/account"
@@ -23,12 +25,14 @@ const (
 )
 
 type Router struct {
-	explorer account.Explorer
+	explorer     account.Explorer
+	workflowCtrl workflow.Controller
 }
 
-func NewWorkspaceRouter(explorer account.Explorer) *Router {
+func NewWorkspaceRouter(explorer account.Explorer, workflowController workflow.Controller) *Router {
 	return &Router{
-		explorer: explorer,
+		explorer:     explorer,
+		workflowCtrl: workflowController,
 	}
 }
 
@@ -38,6 +42,8 @@ func (r *Router) Routes() chi.Router {
 	router.Get("/workspaces/{workspace}/resources", r.ListResources)
 	router.Get("/workspaces/{workspace}/{resource}/cost", r.GetResourceCost)
 	router.Get("/workspaces/{workspace}/metrics/cost", r.GetWorkspaceMetricsCost)
+	router.Post("/workspaces/{workspace}/sync", r.SyncWorkspace)
+
 	return router
 }
 
@@ -164,6 +170,28 @@ func (r *Router) GetWorkspaceMetricsCost(w http.ResponseWriter, req *http.Reques
 	}
 
 	err = jsonResponse(w, apiRecords)
+	if err != nil {
+		handleError(ctx, w, http.StatusInternalServerError, err)
+	}
+}
+
+func (r *Router) SyncWorkspace(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+
+	ws := getWorkspaceFromPath(req)
+
+	err := r.workflowCtrl.Start(context.WithoutCancel(ctx), ws.Name)
+	if err != nil {
+		handleError(
+			ctx,
+			w,
+			http.StatusInternalServerError,
+			fmt.Errorf("failed to start workflow for workspace %s: %w", ws.Name, err),
+		)
+		return
+	}
+
+	err = jsonResponse(w, "OK")
 	if err != nil {
 		handleError(ctx, w, http.StatusInternalServerError, err)
 	}

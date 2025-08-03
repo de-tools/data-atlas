@@ -23,7 +23,6 @@ var SupportedResources = map[string]string{
 	"cluster":                 "cluster_id",
 	"endpoint":                "endpoint_id",
 	"warehouse":               "warehouse_id",
-	"source":                  "source_region",
 	"dlt_pipeline":            "dlt_pipeline_id",
 	"metastore":               "metastore_id",
 }
