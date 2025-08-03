@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/de-tools/data-atlas/pkg/services/workflow"
+
 	"github.com/de-tools/data-atlas/pkg/services/account"
 
 	handlers "github.com/de-tools/data-atlas/pkg/handlers/workspace"
@@ -15,8 +17,9 @@ import (
 )
 
 type Dependencies struct {
-	Account account.Explorer
-	Logger  zerolog.Logger
+	Account            account.Explorer
+	WorkflowController workflow.Controller
+	Logger             zerolog.Logger
 }
 type Config struct {
 	Addr            string
@@ -34,7 +37,7 @@ func ConfigureRouter(config Config) *chi.Mux {
 		w.Write([]byte("hello world"))
 	})
 
-	workspaces := handlers.NewWorkspaceRouter(config.Dependencies.Account)
+	workspaces := handlers.NewWorkspaceRouter(config.Dependencies.Account, config.Dependencies.WorkflowController)
 	router.Mount("/api/v1", workspaces.Routes())
 
 	return router

@@ -74,8 +74,7 @@ func (ctrl *DefaultController) Start(ctx context.Context, workspace string) erro
 		return err
 	}
 
-	ctrl.startWorkflow(ctx, wf)
-	return nil
+	return ctrl.startWorkflow(ctx, wf)
 }
 
 func (ctrl *DefaultController) Cancel(_ context.Context, workspace string) error {
@@ -93,7 +92,7 @@ func (ctrl *DefaultController) Cancel(_ context.Context, workspace string) error
 	return nil
 }
 
-func (ctrl *DefaultController) startWorkflow(ctx context.Context, wf *store.Workflow) {
+func (ctrl *DefaultController) startWorkflow(ctx context.Context, wf *store.Workflow) error {
 	ctrl.mu.Lock()
 	defer ctrl.mu.Unlock()
 
@@ -102,7 +101,7 @@ func (ctrl *DefaultController) startWorkflow(ctx context.Context, wf *store.Work
 	costExplorer, err := ctrl.explorer.GetWorkspaceCostManager(ctx, domain.Workspace{Name: wf.Workspace})
 	if err != nil {
 		cancel()
-		return
+		return err
 	}
 
 	runner := NewRunner(wf, ctrl.db, ctrl.workflowStore, costExplorer, ctrl.embeddedUsageStore)
@@ -113,4 +112,5 @@ func (ctrl *DefaultController) startWorkflow(ctx context.Context, wf *store.Work
 	}
 
 	go runner.Run(ctx)
+	return nil
 }
