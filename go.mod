@@ -6,11 +6,11 @@ require (
 	github.com/databricks/databricks-sdk-go v0.73.1
 	github.com/databricks/databricks-sql-go v1.7.1
 	github.com/go-chi/chi/v5 v5.2.2
+	github.com/joho/godotenv v1.4.0
 	github.com/marcboeker/go-duckdb/v2 v2.3.3
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
-	golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c
 	gopkg.in/ini.v1 v1.67.0
 )
 
@@ -72,6 +72,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.35.0 // indirect
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
 	golang.org/x/crypto v0.36.0 // indirect
+	golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c // indirect
 	golang.org/x/mod v0.22.0 // indirect
 	golang.org/x/net v0.38.0 // indirect
 	golang.org/x/oauth2 v0.26.0 // indirect
