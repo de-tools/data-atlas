@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -35,13 +36,13 @@ func TestWorkflowService_ProcessWorkflow(t *testing.T) {
 	}()
 
 	_, err = db.Exec(
-		`INSERT INTO workflow_state (id, workspace, status, error) VALUES (?, ?, ?, ?)`,
-		"workflow-001", "my-workspace", "running", nil,
+		`INSERT INTO workflow_state (workspace, created_at, last_processed_record_at) VALUES (?, ?, ?)`,
+		"my-workspace", time.Now().UTC(), time.Now().UTC(),
 	)
 	require.NoError(t, err)
 
 	var count int
-	err = db.QueryRow("SELECT COUNT(*) FROM workflow_state WHERE id = ?", "workflow-001").Scan(&count)
+	err = db.QueryRow("SELECT COUNT(*) FROM workflow_state WHERE workspace = ?", "my-workspace").Scan(&count)
 	require.NoError(t, err)
 	assert.Equal(t, 1, count)
 }

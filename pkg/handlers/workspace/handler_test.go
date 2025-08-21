@@ -71,8 +71,21 @@ func (m *mockWorkspaceCostManager) GetResourcesCost(
 	return args.Get(0).([]domain.ResourceCost), args.Error(1)
 }
 
-func setupRouter(explorer *mockAccountExplorer) *Router {
-	return NewWorkspaceRouter(explorer)
+func (m *mockWorkspaceCostManager) GetUsageStats(ctx context.Context, startTime *time.Time) (*domain.UsageStats, error) {
+	return nil, nil
+}
+
+func (m *mockWorkspaceCostManager) GetUsage(ctx context.Context, startTime, endTime time.Time) ([]domain.ResourceCost, error) {
+	return nil, nil
+}
+
+type mockWorkflowController struct{}
+
+func (m *mockWorkflowController) Start(ctx context.Context, workspace string) error  { return nil }
+func (m *mockWorkflowController) Cancel(ctx context.Context, workspace string) error { return nil }
+
+func setupRouter(explorer *mockAccountExplorer, workflowController *mockWorkflowController) *Router {
+	return NewWorkspaceRouter(explorer, workflowController)
 }
 
 func TestListWorkspaces(t *testing.T) {
@@ -113,7 +126,8 @@ func TestListWorkspaces(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			accountExplorer := new(mockAccountExplorer)
 			tt.setupMock(accountExplorer)
-			router := setupRouter(accountExplorer)
+			workflowController := new(mockWorkflowController)
+			router := setupRouter(accountExplorer, workflowController)
 
 			req := httptest.NewRequest("GET", "/workspaces", nil)
 			rec := httptest.NewRecorder()
@@ -167,8 +181,9 @@ func TestListResources(t *testing.T) {
 			accExplorer := new(mockAccountExplorer)
 			wsExplorer := new(mockWorkspaceExplorer)
 			tt.setupMock(accExplorer, wsExplorer)
+			workflowController := new(mockWorkflowController)
 
-			router := setupRouter(accExplorer)
+			router := setupRouter(accExplorer, workflowController)
 			req := httptest.NewRequest("GET", "/workspaces/"+tt.workspace+"/resources", nil)
 			rec := httptest.NewRecorder()
 
@@ -330,8 +345,9 @@ func TestGetResourceCost(t *testing.T) {
 			mockExplorer := new(mockAccountExplorer)
 			mockCostManager := new(mockWorkspaceCostManager)
 			tt.setupMock(mockExplorer, mockCostManager)
+			workflowController := new(mockWorkflowController)
 
-			router := setupRouter(mockExplorer)
+			router := setupRouter(mockExplorer, workflowController)
 
 			// Build URL with query parameters
 			url := "/workspaces/" + tt.workspace + "/" + tt.resource + "/cost"

@@ -45,9 +45,9 @@ func (u *usageStore) Add(ctx context.Context, workspace string, records []store.
 	var stmt *sql.Stmt
 	var err error
 	if tx == nil {
-		stmt, err = tx.PrepareContext(ctx, query)
-	} else {
 		stmt, err = u.db.PrepareContext(ctx, query)
+	} else {
+		stmt, err = tx.PrepareContext(ctx, query)
 	}
 
 	if err != nil {
