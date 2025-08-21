@@ -98,16 +98,18 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		},
 	})
 
-	host := os.Getenv("SERVER_HOST")
-	port := os.Getenv("SERVER_PORT")
-
-	if host == "" || port == "" {
-		logger.Error().Msgf("Missing server configuration from .env file")
-		os.Exit(1)
-	}
+	host := orDefault(os.Getenv("SERVER_HOST"), "localhost")
+	port := orDefault(os.Getenv("SERVER_PORT"), "8080")
 
 	addr := net.JoinHostPort(host, port)
 	logger.Info().Msgf("starting server on %s", addr)
 
 	return http.ListenAndServe(addr, mux)
+}
+
+func orDefault(v, def string) string {
+	if v == "" {
+		return def
+	}
+	return v
 }
