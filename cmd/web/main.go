@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/user"
@@ -14,6 +15,7 @@ import (
 	"github.com/de-tools/data-atlas/pkg/server"
 	"github.com/de-tools/data-atlas/pkg/services/account"
 	"github.com/de-tools/data-atlas/pkg/services/config"
+	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 )
@@ -40,6 +42,10 @@ func main() {
 }
 
 func runServer(cmd *cobra.Command, _ []string) error {
+	if err := godotenv.Load(); err != nil {
+		fmt.Printf("Error loading .env file: %v\n", err)
+	}
+
 	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
 	ctx := logger.WithContext(cmd.Context())
 
@@ -92,5 +98,18 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		},
 	})
 
-	return http.ListenAndServe(":8080", mux)
+	host := orDefault(os.Getenv("SERVER_HOST"), "localhost")
+	port := orDefault(os.Getenv("SERVER_PORT"), "8080")
+
+	addr := net.JoinHostPort(host, port)
+	logger.Info().Msgf("starting server on %s", addr)
+
+	return http.ListenAndServe(addr, mux)
+}
+
+func orDefault(v, def string) string {
+	if v == "" {
+		return def
+	}
+	return v
 }
