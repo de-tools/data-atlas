@@ -40,8 +40,8 @@ func (r *Router) Routes() chi.Router {
 	router := chi.NewRouter()
 	router.Get("/workspaces", r.ListWorkspaces)
 	router.Get("/workspaces/{workspace}/resources", r.ListResources)
-	router.Get("/workspaces/{workspace}/{resource}/cost", r.GetResourceCost)
-	router.Get("/workspaces/{workspace}/metrics/cost", r.GetWorkspaceMetricsCost)
+	router.Get("/workspaces/{workspace}/resources/{resource}/cost", r.GetResourceCost)
+	router.Get("/workspaces/{workspace}/resources/cost", r.GetWorkspaceResourcesCost)
 	router.Post("/workspaces/{workspace}/sync", r.SyncWorkspace)
 
 	return router
@@ -134,10 +134,10 @@ func (r *Router) GetResourceCost(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (r *Router) GetWorkspaceMetricsCost(w http.ResponseWriter, req *http.Request) {
+func (r *Router) GetWorkspaceResourcesCost(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	ws := getWorkspaceFromPath(req)
-	resourceTypes := req.URL.Query()["resource_type"]
+	resourceTypes := req.URL.Query()["resource"]
 
 	endTime, err := parseDateParam(req, "to", time.Now())
 	if err != nil {
