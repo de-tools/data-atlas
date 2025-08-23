@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/de-tools/data-atlas/pkg/store/databrickssql/usage"
-
 	"github.com/de-tools/data-atlas/pkg/adapters"
 	"github.com/de-tools/data-atlas/pkg/models/domain"
+	"github.com/de-tools/data-atlas/pkg/models/store"
+	"github.com/de-tools/data-atlas/pkg/store/databrickssql/usage"
 )
 
 type CostManager interface {
@@ -52,7 +52,16 @@ func (w *workspaceCostManager) GetResourcesCost(
 	}
 
 	resourceTypes := validResourceTypes(res.Resources)
-	records, err := w.usageStore.GetResourcesUsage(ctx, resourceTypes, startTime, endTime)
+
+	var records []store.UsageRecord
+	var err error
+	// Case when we call /metrics/cost without resources
+	if len(resourceTypes) == 0 {
+		records, err = w.usageStore.GetUsage(ctx, startTime, endTime)
+	} else {
+		records, err = w.usageStore.GetResourcesUsage(ctx, resourceTypes, startTime, endTime)
+	}
+
 	if err != nil {
 		return nil, err
 	}
