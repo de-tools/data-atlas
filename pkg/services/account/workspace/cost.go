@@ -55,7 +55,7 @@ func (w *workspaceCostManager) GetResourcesCost(
 
 	var records []store.UsageRecord
 	var err error
-	// Case when we call /metrics/cost without resources
+	// Case when we call /resources/cost without resources
 	if len(resourceTypes) == 0 {
 		records, err = w.usageStore.GetUsage(ctx, startTime, endTime)
 	} else {
