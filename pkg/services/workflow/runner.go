@@ -80,7 +80,16 @@ func (r *Runner) Run(ctx context.Context) {
 		return
 	}
 
-	startTime := *stats.FirstRecordTime
+	var startTime time.Time
+	switch {
+	case lastProcessedTime != nil:
+		startTime = *lastProcessedTime
+	case stats != nil && stats.FirstRecordTime != nil:
+		startTime = *stats.FirstRecordTime
+	default:
+		startTime = time.Now().Add(-r.config.BatchInterval)
+	}
+
 	ws := r.workflow.Workspace
 	processedRecords := int64(0)
 	for {
@@ -102,6 +111,8 @@ func (r *Runner) Run(ctx context.Context) {
 
 			if len(records) == 0 {
 				logger.Info().Msg("sync, no records found")
+				// Don't require the same empty window on the next iteration
+				startTime = endTime
 				continue
 			}
 
