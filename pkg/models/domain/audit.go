@@ -6,16 +6,13 @@ const (
 	SeverityLow Severity = iota
 	SeverityMedium
 	SeverityHigh
-	SeverityCritical
 )
 
 type AuditFinding struct {
-	ID             string
-	Title          string
-	Severity       Severity // low/medium/high
 	Resource       ResourceDef
 	Issue          string
 	Recommendation string
+	Severity       Severity // low/medium/high
 }
 
 type AuditReport struct {
