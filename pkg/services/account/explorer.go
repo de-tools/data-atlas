@@ -10,7 +10,9 @@ import (
 	"strings"
 
 	"github.com/de-tools/data-atlas/pkg/store/databrickssql/pricing"
-	"github.com/de-tools/data-atlas/pkg/store/databrickssql/usage"
+	dbusage "github.com/de-tools/data-atlas/pkg/store/databrickssql/usage"
+	duckdbstore "github.com/de-tools/data-atlas/pkg/store/duckdb"
+	duckdbusage "github.com/de-tools/data-atlas/pkg/store/duckdb/usage"
 
 	"github.com/databricks/databricks-sdk-go/config"
 	_ "github.com/databricks/databricks-sql-go" // Required for databricks sql
@@ -23,7 +25,10 @@ import (
 type Explorer interface {
 	ListWorkspaces(ctx context.Context) ([]domain.Workspace, error)
 	GetWorkspaceExplorer(ctx context.Context, ws domain.Workspace) (workspace.Explorer, error)
+	// GetWorkspaceCostManager returns a DuckDB-backed cost manager for API reads
 	GetWorkspaceCostManager(ctx context.Context, ws domain.Workspace) (workspace.CostManager, error)
+	// GetWorkspaceSourceCostManager returns a Databricks-backed cost manager for ingestion
+	GetWorkspaceSourceCostManager(ctx context.Context, ws domain.Workspace) (workspace.CostManager, error)
 }
 
 type accountExplorer struct {
@@ -56,6 +61,22 @@ func (a *accountExplorer) GetWorkspaceExplorer(ctx context.Context, ws domain.Wo
 }
 
 func (a *accountExplorer) GetWorkspaceCostManager(
+	ctx context.Context,
+	ws domain.Workspace,
+) (workspace.CostManager, error) {
+	// DuckDB-backed CostManager for API read paths
+	db, err := duckdbstore.NewDB(duckdbstore.Settings{DbPath: "data-atlas.db"})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create DuckDB instance: %w", err)
+	}
+	usageStore, err := duckdbusage.NewWorkspaceStore(db, ws.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create DuckDB usage store: %w", err)
+	}
+	return workspace.NewCostManager(usageStore), nil
+}
+
+func (a *accountExplorer) GetWorkspaceSourceCostManager(
 	ctx context.Context,
 	ws domain.Workspace,
 ) (workspace.CostManager, error) {
@@ -93,9 +114,8 @@ func (a *accountExplorer) GetWorkspaceCostManager(
 		log.Fatalf("failed to connect to Databricks: %v", err)
 	}
 
-	usageStore := usage.NewStore(db, pricing.NewStore())
+	usageStore := dbusage.NewStore(db, pricing.NewStore())
 	costManager := workspace.NewCostManager(usageStore)
-
 	return costManager, nil
 }
 

@@ -49,6 +49,17 @@ func (m *mockAccountExplorer) GetWorkspaceCostManager(
 	return args.Get(0).(workspace.CostManager), args.Error(1)
 }
 
+func (m *mockAccountExplorer) GetWorkspaceSourceCostManager(
+	ctx context.Context,
+	ws domain.Workspace,
+) (workspace.CostManager, error) {
+	args := m.Called(ctx, ws)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(workspace.CostManager), args.Error(1)
+}
+
 type mockWorkspaceExplorer struct {
 	mock.Mock
 }
