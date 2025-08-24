@@ -9,8 +9,10 @@ const (
 )
 
 type AuditFinding struct {
+	Id             string
 	Resource       ResourceDef
-	Issue          string
+	Issue          string // code of the issue, (e.g., auto_stop_disabled)
+	Description    string // human-readable description
 	Recommendation string
 	Severity       Severity // low/medium/high
 }
