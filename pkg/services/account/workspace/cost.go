@@ -8,7 +8,6 @@ import (
 	"github.com/de-tools/data-atlas/pkg/adapters"
 	"github.com/de-tools/data-atlas/pkg/models/domain"
 	"github.com/de-tools/data-atlas/pkg/models/store"
-	"github.com/de-tools/data-atlas/pkg/store/databrickssql/usage"
 )
 
 type CostManager interface {
@@ -21,11 +20,21 @@ type CostManager interface {
 	GetUsage(ctx context.Context, startTime, endTime time.Time) ([]domain.ResourceCost, error)
 }
 
-type workspaceCostManager struct {
-	usageStore usage.Store
+// UsageStore is the minimal interface required by CostManager for reading usage
+// Implemented by both Databricks SQL and DuckDB usage stores
+// Note: It excludes mutating methods like Add
+// so we can plug different storage backends seamlessly.
+type UsageStore interface {
+	GetResourcesUsage(ctx context.Context, resources []string, startTime, endTime time.Time) ([]store.UsageRecord, error)
+	GetUsage(ctx context.Context, startTime, endTime time.Time) ([]store.UsageRecord, error)
+	GetUsageStats(ctx context.Context, startTime *time.Time) (*store.UsageStats, error)
 }
 
-func NewCostManager(usageStore usage.Store) CostManager {
+type workspaceCostManager struct {
+	usageStore UsageStore
+}
+
+func NewCostManager(usageStore UsageStore) CostManager {
 	return &workspaceCostManager{
 		usageStore: usageStore,
 	}
