@@ -91,7 +91,8 @@ func (u *usageStore) GetUsage(
 
 	query := `
 		SELECT
-			COALESCE(` + buildCoalesceList(domain.SupportedResourcesList, "_id") + `, 'default_storage') AS id,
+			record_id as id,
+			COALESCE(` + buildCoalesceList(domain.SupportedResourcesList, "_id") + `, 'default_storage') AS resource_id,
 			(
             	CASE
                 	` + buildResourceTypeCase(domain.SupportedResourcesList) + `
@@ -130,19 +131,20 @@ func (u *usageStore) GetUsage(
 	var records []store.UsageRecord
 	for rows.Next() {
 		var (
-			id, resourceType, usageType, unit, sku string
-			start, end                             time.Time
-			qty                                    float64
+			id, resourceID, resourceType, usageType, unit, sku string
+			start, end                                         time.Time
+			qty                                                float64
 		)
-		if err := rows.Scan(&id, &resourceType, &usageType, &start, &end, &qty, &unit, &sku); err != nil {
+		if err := rows.Scan(&id, &resourceID, &resourceType, &usageType, &start, &end, &qty, &unit, &sku); err != nil {
 			return nil, err
 		}
 
 		price := u.pricingStore.GetSkuPrice(ctx, sku)
 
 		records = append(records, store.UsageRecord{
-			ID:       id,
-			Resource: resourceType,
+			ID:           id,
+			ResourceID:   resourceID,
+			ResourceType: resourceType,
 			Metadata: map[string]string{
 				"usage_type":    usageType,
 				"resource_type": resourceType,
@@ -180,7 +182,8 @@ func (u *usageStore) GetResourcesUsage(
 
 	query := `
 		SELECT
-			COALESCE(` + buildCoalesceList(resources, "_id") + `, 'default_storage') AS id,
+			record_id as id,
+			COALESCE(` + buildCoalesceList(resources, "_id") + `, 'default_storage') AS resource_id,
 			(
 				CASE
 					` + buildResourceTypeCase(resources) + `
@@ -217,19 +220,20 @@ func (u *usageStore) GetResourcesUsage(
 	var records []store.UsageRecord
 	for rows.Next() {
 		var (
-			id, resourceType, usageType, unit, sku string
-			start, end                             time.Time
-			qty                                    float64
+			id, resourceID, resourceType, usageType, unit, sku string
+			start, end                                         time.Time
+			qty                                                float64
 		)
-		if err := rows.Scan(&id, &resourceType, &usageType, &start, &end, &qty, &unit, &sku); err != nil {
+		if err := rows.Scan(&id, &resourceID, &resourceType, &usageType, &start, &end, &qty, &unit, &sku); err != nil {
 			return nil, err
 		}
 
 		price := u.pricingStore.GetSkuPrice(ctx, sku)
 
 		records = append(records, store.UsageRecord{
-			ID:       id,
-			Resource: resourceType,
+			ID:           id,
+			ResourceID:   resourceID,
+			ResourceType: resourceType,
 			Metadata: map[string]string{
 				"usage_type":    usageType,
 				"resource_type": resourceType,

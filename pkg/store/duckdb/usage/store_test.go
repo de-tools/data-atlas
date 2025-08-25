@@ -47,8 +47,8 @@ func TestUsageStore_Add(t *testing.T) {
 		workspace := "test-workspace"
 		records := []store.UsageRecord{
 			{
-				ID:       "record1",
-				Resource: "compute",
+				ID:           "record1",
+				ResourceType: "compute",
 				Metadata: map[string]string{
 					"instance_type": "t2.micro",
 				},
@@ -61,8 +61,8 @@ func TestUsageStore_Add(t *testing.T) {
 				EndTime:   time.Date(2024, 1, 1, 1, 0, 0, 0, time.UTC),
 			},
 			{
-				ID:       "record2",
-				Resource: "storage",
+				ID:           "record2",
+				ResourceType: "storage",
 				Metadata: map[string]string{
 					"type": "ssd",
 				},
@@ -95,11 +95,11 @@ func TestUsageStore_Add(t *testing.T) {
 		workspace := "test-workspace"
 		records := []store.UsageRecord{
 			{
-				ID:        "duplicate",
-				Resource:  "compute",
-				Quantity:  1.0,
-				StartTime: time.Now(),
-				EndTime:   time.Now(),
+				ID:           "duplicate",
+				ResourceType: "compute",
+				Quantity:     1.0,
+				StartTime:    time.Now(),
+				EndTime:      time.Now(),
 			},
 		}
 

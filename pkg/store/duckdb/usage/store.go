@@ -36,7 +36,7 @@ func (u *usageStore) Add(ctx context.Context, workspace string, records []store.
 	tx := duckdb.GetTransaction(ctx)
 	query := `
 		INSERT INTO usage_records (
-			id, workspace, resource, metadata, quantity, unit, 
+			id, workspace, resource, metadata, quantity, unit,
 			sku, rate, currency, start_time, end_time
 		) VALUES (
 			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
@@ -64,7 +64,7 @@ func (u *usageStore) Add(ctx context.Context, workspace string, records []store.
 		_, err = stmt.ExecContext(ctx,
 			record.ID,
 			workspace,
-			record.Resource,
+			record.ResourceType,
 			metadata,
 			record.Quantity,
 			record.Unit,

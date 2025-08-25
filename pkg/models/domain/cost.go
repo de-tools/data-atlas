@@ -1,7 +1,8 @@
 package domain
 
 import (
-	"sort"
+	"maps"
+	"slices"
 	"time"
 )
 
@@ -57,12 +58,4 @@ var SupportedResources = map[string]string{
 	"metastore":               "metastore_id",
 }
 
-var SupportedResourcesList []string
-
-func init() {
-	SupportedResourcesList = make([]string, 0, len(SupportedResources))
-	for k := range SupportedResources {
-		SupportedResourcesList = append(SupportedResourcesList, k)
-	}
-	sort.Strings(SupportedResourcesList)
-}
+var SupportedResourcesList = slices.Collect(maps.Keys(SupportedResources))
