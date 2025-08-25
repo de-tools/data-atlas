@@ -16,9 +16,9 @@ func MapStoreUsageRecordToDomainCost(usage store.UsageRecord) domain.ResourceCos
 		EndTime:   usage.EndTime,
 		Resource: domain.ResourceDef{
 			Platform:    "Databricks",
-			Name:        usage.ID,
-			Service:     usage.Resource,
-			Description: fmt.Sprintf("Databricks %s %s", usage.Resource, usage.ID),
+			Name:        usage.ResourceID,
+			Service:     usage.ResourceType,
+			Description: fmt.Sprintf("Databricks %s %s", usage.ResourceType, usage.ResourceID),
 			Metadata:    maps.Clone(usage.Metadata),
 		},
 		Costs: []domain.CostComponent{{
@@ -38,16 +38,17 @@ func MapDomainResourceCostToStoreUsageRecord(cost domain.ResourceCost) store.Usa
 	computeCost := cost.Costs[0]
 
 	return store.UsageRecord{
-		ID:        cost.Resource.Name,
-		Resource:  cost.Resource.Service,
-		StartTime: cost.StartTime,
-		EndTime:   cost.EndTime,
-		Quantity:  computeCost.Value,
-		Unit:      computeCost.Unit,
-		Rate:      computeCost.Rate,
-		Currency:  computeCost.Currency,
-		SKU:       computeCost.SKU,
-		Metadata:  maps.Clone(cost.Resource.Metadata),
+		ID:           cost.ID,
+		ResourceID:   cost.Resource.Name,
+		ResourceType: cost.Resource.Service,
+		StartTime:    cost.StartTime,
+		EndTime:      cost.EndTime,
+		Quantity:     computeCost.Value,
+		Unit:         computeCost.Unit,
+		Rate:         computeCost.Rate,
+		Currency:     computeCost.Currency,
+		SKU:          computeCost.SKU,
+		Metadata:     maps.Clone(cost.Resource.Metadata),
 	}
 }
 

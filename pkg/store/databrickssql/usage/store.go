@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/de-tools/data-atlas/pkg/models/domain"
 	"github.com/de-tools/data-atlas/pkg/store/databrickssql/pricing"
 
 	"github.com/de-tools/data-atlas/pkg/models/store"
@@ -43,10 +44,10 @@ func (u *usageStore) GetUsageStats(ctx context.Context, startTime *time.Time) (*
 	logger := zerolog.Ctx(ctx)
 
 	query := `
-        SELECT 
+        SELECT
             COUNT(*) as total_records,
             MIN(usage_start_time) as earliest_record
-        FROM 
+        FROM
             system.billing.usage
         `
 
@@ -91,18 +92,25 @@ func (u *usageStore) GetUsage(
 	query := `
 		SELECT
 			record_id as id,
+			COALESCE(` + buildCoalesceList(domain.SupportedResourcesList, "_id") + `, 'default_storage') AS resource_id,
+			(
+            	CASE
+                	` + buildResourceTypeCase(domain.SupportedResourcesList) + `
+                	ELSE 'api_operation'
+            	END
+        	) AS resource_type,
 			usage_type,
 			usage_start_time,
 			usage_end_time,
 			usage_quantity,
 			usage_unit,
 			sku_name
-		FROM 
+		FROM
 		    system.billing.usage
-		WHERE 
-		    usage_start_time >= ? AND usage_end_time < ?
-		ORDER BY 
-		    usage_start_time 
+		WHERE
+		    usage_start_time >= ? AND usage_start_time < ?
+		ORDER BY
+		    usage_start_time
 		DESC
 	`
 
@@ -123,20 +131,23 @@ func (u *usageStore) GetUsage(
 	var records []store.UsageRecord
 	for rows.Next() {
 		var (
-			id, usageType, unit, sku string
-			start, end               time.Time
-			qty                      float64
+			id, resourceID, resourceType, usageType, unit, sku string
+			start, end                                         time.Time
+			qty                                                float64
 		)
-		if err := rows.Scan(&id, &usageType, &start, &end, &qty, &unit, &sku); err != nil {
+		if err := rows.Scan(&id, &resourceID, &resourceType, &usageType, &start, &end, &qty, &unit, &sku); err != nil {
 			return nil, err
 		}
 
 		price := u.pricingStore.GetSkuPrice(ctx, sku)
 
 		records = append(records, store.UsageRecord{
-			ID: id,
+			ID:           id,
+			ResourceID:   resourceID,
+			ResourceType: resourceType,
 			Metadata: map[string]string{
-				"usage_type": usageType,
+				"usage_type":    usageType,
+				"resource_type": resourceType,
 			},
 			StartTime: start,
 			EndTime:   end,
@@ -159,6 +170,10 @@ func (u *usageStore) GetResourcesUsage(
 ) ([]store.UsageRecord, error) {
 	logger := zerolog.Ctx(ctx)
 
+	if len(resources) == 0 {
+		return []store.UsageRecord{}, nil
+	}
+
 	var conditions []string
 	for _, resourceType := range resources {
 		idField := fmt.Sprintf("usage_metadata.%s_id", resourceType)
@@ -167,13 +182,15 @@ func (u *usageStore) GetResourcesUsage(
 
 	query := `
 		SELECT
-			COALESCE(` + buildCoalesceList(resources, "_id") + `) AS id,
+			record_id as id,
+			COALESCE(` + buildCoalesceList(resources, "_id") + `, 'default_storage') AS resource_id,
 			(
 				CASE
 					` + buildResourceTypeCase(resources) + `
-					ELSE 'unknown'
+					ELSE 'api_operation'
 				END
 			) AS resource_type,
+			usage_type,
 			usage_start_time,
 			usage_end_time,
 			usage_quantity,
@@ -203,19 +220,22 @@ func (u *usageStore) GetResourcesUsage(
 	var records []store.UsageRecord
 	for rows.Next() {
 		var (
-			id, resourceType, unit, sku string
-			start, end                  time.Time
-			qty                         float64
+			id, resourceID, resourceType, usageType, unit, sku string
+			start, end                                         time.Time
+			qty                                                float64
 		)
-		if err := rows.Scan(&id, &resourceType, &start, &end, &qty, &unit, &sku); err != nil {
+		if err := rows.Scan(&id, &resourceID, &resourceType, &usageType, &start, &end, &qty, &unit, &sku); err != nil {
 			return nil, err
 		}
 
 		price := u.pricingStore.GetSkuPrice(ctx, sku)
 
 		records = append(records, store.UsageRecord{
-			ID: id,
+			ID:           id,
+			ResourceID:   resourceID,
+			ResourceType: resourceType,
 			Metadata: map[string]string{
+				"usage_type":    usageType,
 				"resource_type": resourceType,
 			},
 			StartTime: start,

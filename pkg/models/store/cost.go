@@ -8,16 +8,17 @@ type UsageStats struct {
 }
 
 type UsageRecord struct {
-	ID        string
-	Resource  string
-	Metadata  map[string]string
-	Quantity  float64
-	Unit      string
-	SKU       string
-	Rate      float64
-	Currency  string
-	StartTime time.Time
-	EndTime   time.Time
+	ID           string
+	ResourceID   string
+	ResourceType string
+	Metadata     map[string]string
+	Quantity     float64
+	Unit         string
+	SKU          string
+	Rate         float64
+	Currency     string
+	StartTime    time.Time
+	EndTime      time.Time
 }
 
 type DailyUsageAggregate struct {
