@@ -21,6 +21,7 @@ import (
 )
 
 var cfgPath string
+var syncEnabled bool
 
 func main() {
 	var rootCmd = &cobra.Command{
@@ -34,6 +35,7 @@ func main() {
 
 	rootCmd.Flags().StringVarP(&cfgPath, "config", "c", defaultPath,
 		"Path to the .databrickscfg file (default is $HOME/.databrickscfg)")
+	rootCmd.Flags().BoolVar(&syncEnabled, "sync", false, "Start the syncing flow for workflows")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -78,7 +80,7 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("failed to create usage store: %w", err)
 	}
 	workflowCtrl := workflow.NewController(db, accountExplorer, workflowStore, usageStore)
-	err = workflowCtrl.Init(ctx)
+	err = workflowCtrl.Init(ctx, syncEnabled)
 	if err != nil {
 		return fmt.Errorf("failed to initialize workflow controller: %w", err)
 	}

@@ -53,14 +53,16 @@ func NewController(
 	return ctrl
 }
 
-func (ctrl *DefaultController) Init(ctx context.Context) error {
+func (ctrl *DefaultController) Init(ctx context.Context, syncEnabled bool) error {
 	workflows, err := ctrl.workflowStore.ListWorkflows(ctx, []string{})
 	if err != nil {
 		return err
 	}
 
-	for _, wf := range workflows {
-		ctrl.startWorkflow(ctx, wf)
+	if syncEnabled {
+		for _, wf := range workflows {
+			ctrl.startWorkflow(ctx, wf)
+		}
 	}
 
 	return nil
