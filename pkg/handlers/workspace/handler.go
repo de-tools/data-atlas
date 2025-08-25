@@ -44,6 +44,13 @@ func (r *Router) Routes() chi.Router {
 	router.Get("/workspaces/{workspace}/resources/cost", r.GetWorkspaceResourcesCost)
 	router.Post("/workspaces/{workspace}/sync", r.SyncWorkspace)
 
+	// Audit endpoints - WIP
+	router.Get("/workspaces/{workspace}/resources/warehouse/audit", r.GetWarehouseAudit)
+	router.Get("/workspaces/{workspace}/resources/cluster/audit", r.GetClusterAudit)
+	router.Get("/workspaces/{workspace}/resources/dlt_pipeline/audit", r.GetDLTAudit)
+	router.Get("/workspaces/{workspace}/resources/endpoint/audit", r.GetModelServingAudit)
+	router.Get("/workspaces/{workspace}/resources/instance_pool/audit", r.GetPoolAudit)
+
 	return router
 }
 
@@ -195,6 +202,26 @@ func (r *Router) SyncWorkspace(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		handleError(ctx, w, http.StatusInternalServerError, err)
 	}
+}
+
+func (r *Router) GetWarehouseAudit(writer http.ResponseWriter, request *http.Request) {
+	panic("Implement me")
+}
+
+func (r *Router) GetClusterAudit(writer http.ResponseWriter, request *http.Request) {
+	panic("Implement me")
+}
+
+func (r *Router) GetDLTAudit(writer http.ResponseWriter, request *http.Request) {
+	panic("Implement me")
+}
+
+func (r *Router) GetModelServingAudit(writer http.ResponseWriter, request *http.Request) {
+	panic("Implement me")
+}
+
+func (r *Router) GetPoolAudit(writer http.ResponseWriter, request *http.Request) {
+	panic("Implement me")
 }
 
 func handleError(ctx context.Context, w http.ResponseWriter, statusCode int, err error) {
