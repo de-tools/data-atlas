@@ -22,8 +22,6 @@ type CostManager interface {
 
 // UsageStore is the minimal interface required by CostManager for reading usage
 // Implemented by both Databricks SQL and DuckDB usage stores
-// Note: It excludes mutating methods like Add
-// so we can plug different storage backends seamlessly.
 type UsageStore interface {
 	GetResourcesUsage(ctx context.Context, resources []string, startTime, endTime time.Time) ([]store.UsageRecord, error)
 	GetUsage(ctx context.Context, startTime, endTime time.Time) ([]store.UsageRecord, error)

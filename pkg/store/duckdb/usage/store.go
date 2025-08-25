@@ -142,7 +142,7 @@ func (u *usageStore) GetResourcesUsage(ctx context.Context, resources []string, 
 	for range resources {
 		placeholders = append(placeholders, "?")
 	}
-	// Adjust args to match order: workspace, start, end, resources...
+
 	args = append([]interface{}{u.workspace, startTime, endTime}, toInterfaceSlice(resources)...)
 
 	query := fmt.Sprintf(`
