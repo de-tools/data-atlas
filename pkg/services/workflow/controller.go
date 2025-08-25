@@ -98,7 +98,7 @@ func (ctrl *DefaultController) startWorkflow(ctx context.Context, wf *store.Work
 
 	ctx, cancel := context.WithCancel(ctx)
 
-	costExplorer, err := ctrl.explorer.GetWorkspaceSourceCostManager(ctx, domain.Workspace{Name: wf.Workspace})
+	costExplorer, err := ctrl.explorer.GetWorkspaceCostManagerRemote(ctx, domain.Workspace{Name: wf.Workspace})
 	if err != nil {
 		cancel()
 		return err

@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/de-tools/data-atlas/pkg/store/databrickssql/pricing"
-	dbusage "github.com/de-tools/data-atlas/pkg/store/databrickssql/usage"
-	duckdbstore "github.com/de-tools/data-atlas/pkg/store/duckdb"
+	databricksusage "github.com/de-tools/data-atlas/pkg/store/databrickssql/usage"
+	"github.com/de-tools/data-atlas/pkg/store/duckdb"
 	duckdbusage "github.com/de-tools/data-atlas/pkg/store/duckdb/usage"
 
 	"github.com/databricks/databricks-sdk-go/config"
@@ -25,10 +25,10 @@ import (
 type Explorer interface {
 	ListWorkspaces(ctx context.Context) ([]domain.Workspace, error)
 	GetWorkspaceExplorer(ctx context.Context, ws domain.Workspace) (workspace.Explorer, error)
-	// GetWorkspaceCostManager returns a DuckDB-backed cost manager for API reads
-	GetWorkspaceCostManager(ctx context.Context, ws domain.Workspace) (workspace.CostManager, error)
-	// GetWorkspaceSourceCostManager returns a Databricks-backed cost manager for ingestion
-	GetWorkspaceSourceCostManager(ctx context.Context, ws domain.Workspace) (workspace.CostManager, error)
+	// GetWorkspaceCostManagerCached returns a DuckDB-backed cost manager
+	GetWorkspaceCostManagerCached(ctx context.Context, ws domain.Workspace) (workspace.CostManager, error)
+	// GetWorkspaceCostManagerRemote returns a Databricks-backed cost manager
+	GetWorkspaceCostManagerRemote(ctx context.Context, ws domain.Workspace) (workspace.CostManager, error)
 }
 
 type accountExplorer struct {
@@ -60,12 +60,12 @@ func (a *accountExplorer) GetWorkspaceExplorer(ctx context.Context, ws domain.Wo
 	return workspace.NewExplorer(cfg, ws), nil
 }
 
-func (a *accountExplorer) GetWorkspaceCostManager(
+func (a *accountExplorer) GetWorkspaceCostManagerCached(
 	ctx context.Context,
 	ws domain.Workspace,
 ) (workspace.CostManager, error) {
 	// DuckDB-backed CostManager for API read paths
-	db, err := duckdbstore.NewDB(duckdbstore.Settings{DbPath: "data-atlas.db"})
+	db, err := duckdb.NewDB(duckdb.Settings{DbPath: "data-atlas.db"})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DuckDB instance: %w", err)
 	}
@@ -76,7 +76,7 @@ func (a *accountExplorer) GetWorkspaceCostManager(
 	return workspace.NewCostManager(usageStore), nil
 }
 
-func (a *accountExplorer) GetWorkspaceSourceCostManager(
+func (a *accountExplorer) GetWorkspaceCostManagerRemote(
 	ctx context.Context,
 	ws domain.Workspace,
 ) (workspace.CostManager, error) {
@@ -114,7 +114,7 @@ func (a *accountExplorer) GetWorkspaceSourceCostManager(
 		log.Fatalf("failed to connect to Databricks: %v", err)
 	}
 
-	usageStore := dbusage.NewStore(db, pricing.NewStore())
+	usageStore := databricksusage.NewStore(db, pricing.NewStore())
 	costManager := workspace.NewCostManager(usageStore)
 	return costManager, nil
 }

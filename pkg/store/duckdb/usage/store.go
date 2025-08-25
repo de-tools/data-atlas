@@ -12,9 +12,6 @@ import (
 	"github.com/de-tools/data-atlas/pkg/models/store"
 )
 
-// Store supports both ingestion (Add) and read (Get*) operations for usage records in DuckDB
-// For read operations, bind the store to a specific workspace via NewWorkspaceStore
-// Note: Add still accepts workspace parameter to minimize changes in workflow runner.
 type Store interface {
 	Add(ctx context.Context, workspace string, records []store.UsageRecord) error
 	GetResourcesUsage(ctx context.Context, resources []string, startTime, endTime time.Time) ([]store.UsageRecord, error)
@@ -58,10 +55,10 @@ func (u *usageStore) Add(ctx context.Context, workspace string, records []store.
 	tx := duckdb.GetTransaction(ctx)
 	query := `
 		INSERT INTO usage_records (
-			id, workspace, resource, metadata, quantity, unit,
+			id, workspace, resource_id, resource_type, metadata, quantity, unit,
 			sku, rate, currency, start_time, end_time
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)`
 
 	var stmt *sql.Stmt
@@ -86,6 +83,7 @@ func (u *usageStore) Add(ctx context.Context, workspace string, records []store.
 		_, err = stmt.ExecContext(ctx,
 			record.ID,
 			workspace,
+			record.ResourceID,
 			record.ResourceType,
 			metadata,
 			record.Quantity,
@@ -117,7 +115,7 @@ func (u *usageStore) GetUsage(ctx context.Context, startTime, endTime time.Time)
 		return nil, err
 	}
 	query := `
-		SELECT id, resource, metadata, quantity, unit, sku, rate, currency, start_time, end_time
+		SELECT id, resource_id, resource_type, CAST(metadata AS VARCHAR) AS metadata, quantity, unit, sku, rate, currency, start_time, end_time
 		FROM usage_records
 		WHERE workspace = ? AND start_time >= ? AND start_time < ?
 		ORDER BY start_time DESC
@@ -148,9 +146,9 @@ func (u *usageStore) GetResourcesUsage(ctx context.Context, resources []string, 
 	args = append([]interface{}{u.workspace, startTime, endTime}, toInterfaceSlice(resources)...)
 
 	query := fmt.Sprintf(`
-		SELECT id, resource, metadata, quantity, unit, sku, rate, currency, start_time, end_time
+		SELECT id, resource_id, resource_type, CAST(metadata AS VARCHAR) AS metadata, quantity, unit, sku, rate, currency, start_time, end_time
 		FROM usage_records
-		WHERE workspace = ? AND start_time >= ? AND start_time < ? AND resource IN (%s)
+		WHERE workspace = ? AND start_time >= ? AND start_time < ? AND resource_type IN (%s)
 		ORDER BY start_time DESC
 	`, join(placeholders, ","))
 
@@ -189,12 +187,12 @@ func scanUsageRows(rows *sql.Rows) ([]store.UsageRecord, error) {
 	records := make([]store.UsageRecord, 0)
 	for rows.Next() {
 		var (
-			id, resource, unit, sku, currency string
-			metadataRaw                       []byte
-			qty, rate                         float64
-			start, end                        time.Time
+			id, resourceID, resourceType, unit, sku, currency string
+			metadataRaw                                       []byte
+			qty, rate                                         float64
+			start, end                                        time.Time
 		)
-		if err := rows.Scan(&id, &resource, &metadataRaw, &qty, &unit, &sku, &rate, &currency, &start, &end); err != nil {
+		if err := rows.Scan(&id, &resourceID, &resourceType, &metadataRaw, &qty, &unit, &sku, &rate, &currency, &start, &end); err != nil {
 			return nil, err
 		}
 		md := map[string]string{}
@@ -202,16 +200,17 @@ func scanUsageRows(rows *sql.Rows) ([]store.UsageRecord, error) {
 			_ = json.Unmarshal(metadataRaw, &md)
 		}
 		records = append(records, store.UsageRecord{
-			ID:        id,
-			Resource:  resource,
-			Metadata:  md,
-			Quantity:  qty,
-			Unit:      unit,
-			SKU:       sku,
-			Rate:      rate,
-			Currency:  currency,
-			StartTime: start,
-			EndTime:   end,
+			ID:           id,
+			ResourceID:   resourceID,
+			ResourceType: resourceType,
+			Metadata:     md,
+			Quantity:     qty,
+			Unit:         unit,
+			SKU:          sku,
+			Rate:         rate,
+			Currency:     currency,
+			StartTime:    start,
+			EndTime:      end,
 		})
 	}
 	return records, nil
