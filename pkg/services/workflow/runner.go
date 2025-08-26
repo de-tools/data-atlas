@@ -54,8 +54,8 @@ func NewRunner(
 		done:          make(chan struct{}),
 		progress:      make(chan RunnerProgress, 100),
 		config: RunnerConfig{
-			BatchInterval: 7 * 24 * time.Hour,
-			SleepInterval: 10 * time.Second,
+			BatchInterval: 365 * 24 * time.Hour,
+			SleepInterval: 1 * time.Minute,
 		},
 	}
 }

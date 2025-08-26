@@ -117,7 +117,7 @@ func (r *Router) GetResourceCost(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	costManager, err := r.explorer.GetWorkspaceCostManager(ctx, ws)
+	costManager, err := r.explorer.GetWorkspaceCostManagerCached(ctx, ws)
 	if err != nil {
 		handleError(ctx, w, http.StatusNotFound, err)
 		return
@@ -158,7 +158,7 @@ func (r *Router) GetWorkspaceResourcesCost(w http.ResponseWriter, req *http.Requ
 		return
 	}
 
-	costManager, err := r.explorer.GetWorkspaceCostManager(ctx, ws)
+	costManager, err := r.explorer.GetWorkspaceCostManagerCached(ctx, ws)
 	if err != nil {
 		handleError(ctx, w, http.StatusNotFound, err)
 		return

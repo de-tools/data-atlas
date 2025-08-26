@@ -38,7 +38,18 @@ func (m *mockAccountExplorer) GetWorkspaceExplorer(
 	return args.Get(0).(workspace.Explorer), args.Error(1)
 }
 
-func (m *mockAccountExplorer) GetWorkspaceCostManager(
+func (m *mockAccountExplorer) GetWorkspaceCostManagerCached(
+	ctx context.Context,
+	ws domain.Workspace,
+) (workspace.CostManager, error) {
+	args := m.Called(ctx, ws)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(workspace.CostManager), args.Error(1)
+}
+
+func (m *mockAccountExplorer) GetWorkspaceCostManagerRemote(
 	ctx context.Context,
 	ws domain.Workspace,
 ) (workspace.CostManager, error) {
@@ -228,7 +239,7 @@ func TestGetResourceCost(t *testing.T) {
 				"to":   "13-07-2025",
 			},
 			setupMock: func(me *mockAccountExplorer, cm *mockWorkspaceCostManager) {
-				me.On("GetWorkspaceCostManager", mock.Anything, domain.Workspace{Name: "test-workspace"}).
+				me.On("GetWorkspaceCostManagerCached", mock.Anything, domain.Workspace{Name: "test-workspace"}).
 					Return(cm, nil)
 
 				cm.On("GetResourcesCost",
@@ -333,7 +344,7 @@ func TestGetResourceCost(t *testing.T) {
 				"to":   "13-07-2025",
 			},
 			setupMock: func(me *mockAccountExplorer, cm *mockWorkspaceCostManager) {
-				me.On("GetWorkspaceCostManager", mock.Anything, domain.Workspace{Name: "test-workspace"}).
+				me.On("GetWorkspaceCostManagerCached", mock.Anything, domain.Workspace{Name: "test-workspace"}).
 					Return(nil, fmt.Errorf("workspace not found"))
 			},
 			expectedStatus: http.StatusNotFound,

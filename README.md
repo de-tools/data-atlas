@@ -9,7 +9,7 @@ Build the project first.
 
 ## Using API server
 ### Run locally
-* Run server: `./cost -c  $HOME/.databrickscfg`
+* Run server: `./cost -c $HOME/.databrickscfg --sync`
 * Base URL: http://localhost:8080/api/v1
 * Date format in queries: DD-MM-YYYY (e.g., 02-01-2006)
 

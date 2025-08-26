@@ -21,7 +21,8 @@ const UsageTableSchema = `
 	CREATE TABLE IF NOT EXISTS usage_records (
 		id VARCHAR NOT NULL,
 		workspace VARCHAR NOT NULL,
-		resource VARCHAR,
+		resource_id VARCHAR,
+		resource_type VARCHAR,
 		metadata JSON,
 		quantity DOUBLE,
 		unit VARCHAR,
