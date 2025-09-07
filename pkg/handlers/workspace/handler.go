@@ -49,7 +49,6 @@ func (r *Router) Routes() chi.Router {
 	router.Get("/workspaces/{workspace}/resources/cluster/audit", r.GetClusterAudit)
 	router.Get("/workspaces/{workspace}/resources/dlt_pipeline/audit", r.GetDLTAudit)
 	router.Get("/workspaces/{workspace}/resources/endpoint/audit", r.GetModelServingAudit)
-	router.Get("/workspaces/{workspace}/resources/instance_pool/audit", r.GetPoolAudit)
 
 	return router
 }
@@ -226,14 +225,21 @@ func (r *Router) GetClusterAudit(writer http.ResponseWriter, request *http.Reque
 }
 
 func (r *Router) GetDLTAudit(writer http.ResponseWriter, request *http.Request) {
+	// Jobs & Pipelines
+	// TODO: 
+	// - Pipeline success ratio & MTTR
+	// - Autoscaling 
 	panic("Implement me")
 }
 
 func (r *Router) GetModelServingAudit(writer http.ResponseWriter, request *http.Request) {
-	panic("Implement me")
-}
-
-func (r *Router) GetPoolAudit(writer http.ResponseWriter, request *http.Request) {
+	// Serving endpoints
+	// TODO: 
+	// - Autoscaling & long time to provision endpoints
+	// - Not working endpoints
+	// - Utilization of endpoints
+	// - Active compute time
+	// - Golden Signals
 	panic("Implement me")
 }
 
