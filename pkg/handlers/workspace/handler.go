@@ -205,10 +205,23 @@ func (r *Router) SyncWorkspace(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) GetWarehouseAudit(writer http.ResponseWriter, request *http.Request) {
+	// TODO: 
+	// - Runs for too long, or Idle Workloads
+	// - WH is to big
+	// - Budgets / Alerts are set (based on DBU consumption)
+	// - Removes stale / orphaned resources
+	// - Right Size for Resource -> over provision e.g. large cluster running small workloads
 	panic("Implement me")
 }
 
 func (r *Router) GetClusterAudit(writer http.ResponseWriter, request *http.Request) {
+	// TODO:
+	// - Billing per cluster / workspace
+	// - Autoscalling / auto-terminations are on / off
+	// - Cluster Utilisation, low average CPU and memory usage
+	// - ID underutilized / overutilized clusters TOP N
+	// - Cluster runtime duration - e.g. ran for 15 hours etc.
+	// - GPU enabled costs, check if we have them [???]
 	panic("Implement me")
 }
 
