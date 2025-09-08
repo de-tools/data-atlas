@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/de-tools/data-atlas/pkg/services/account/workspace"
 	"github.com/de-tools/data-atlas/pkg/services/workflow"
 
 	"github.com/de-tools/data-atlas/pkg/adapters"
@@ -204,7 +205,7 @@ func (r *Router) SyncWorkspace(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) GetWarehouseAudit(writer http.ResponseWriter, request *http.Request) {
-	// TODO: 
+	// TODO:
 	// - Runs for too long, or Idle Workloads
 	// - WH is to big
 	// - Budgets / Alerts are set (based on DBU consumption)
@@ -224,17 +225,42 @@ func (r *Router) GetClusterAudit(writer http.ResponseWriter, request *http.Reque
 	panic("Implement me")
 }
 
-func (r *Router) GetDLTAudit(writer http.ResponseWriter, request *http.Request) {
-	// Jobs & Pipelines
-	// TODO: 
-	// - Pipeline success ratio & MTTR
-	// - Autoscaling 
-	panic("Implement me")
+func (r *Router) GetDLTAudit(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+	ws := getWorkspaceFromPath(req)
+
+	endTime, err := parseDateParam(req, "to", time.Now())
+	if err != nil {
+		handleError(ctx, w, http.StatusBadRequest, err)
+		return
+	}
+
+	startTime, err := parseDateParam(req, "from", time.Now().AddDate(0, 0, -defaultInterval))
+	if err != nil {
+		handleError(ctx, w, http.StatusBadRequest, err)
+		return
+	}
+
+	costManager, err := r.explorer.GetWorkspaceCostManagerCached(ctx, ws)
+	if err != nil {
+		handleError(ctx, w, http.StatusNotFound, err)
+		return
+	}
+
+	report, err := workspace.GetDLTAudit(ctx, ws, startTime, endTime, costManager)
+	if err != nil {
+		handleError(ctx, w, http.StatusInternalServerError, err)
+		return
+	}
+
+	if err := jsonResponse(w, adapters.MapAuditReportDomainToApi(report)); err != nil {
+		handleError(ctx, w, http.StatusInternalServerError, err)
+	}
 }
 
 func (r *Router) GetModelServingAudit(writer http.ResponseWriter, request *http.Request) {
 	// Serving endpoints
-	// TODO: 
+	// TODO:
 	// - Autoscaling & long time to provision endpoints
 	// - Not working endpoints
 	// - Utilization of endpoints
