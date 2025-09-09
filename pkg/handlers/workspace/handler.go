@@ -247,7 +247,13 @@ func (r *Router) GetDLTAudit(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	report, err := workspace.GetDLTAudit(ctx, ws, startTime, endTime, costManager)
+	// For now construct audit settings here; later can be provided via DI
+	settings := workspace.DLTAuditSettings{
+		MaintenanceRatioThreshold:  0.3,
+		MinMaintenanceEvents:       3,
+		LongRunAvgSecondsThreshold: 2 * 3600,
+	}
+	report, err := workspace.GetDLTAudit(ctx, ws, startTime, endTime, costManager, settings)
 	if err != nil {
 		handleError(ctx, w, http.StatusInternalServerError, err)
 		return

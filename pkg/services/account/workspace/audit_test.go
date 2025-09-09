@@ -41,7 +41,8 @@ func TestGetDLTAudit_NoRecords(t *testing.T) {
 	cm.On("GetResourcesCost", mock.Anything, domain.WorkspaceResources{WorkspaceName: ws.Name, Resources: []string{"dlt_pipeline", "dlt_update", "dlt_maintenance"}}, start, end).
 		Return([]domain.ResourceCost{}, nil)
 
-	report, err := GetDLTAudit(ctx, ws, start, end, cm)
+	settings := DLTAuditSettings{MaintenanceRatioThreshold: 0.3, MinMaintenanceEvents: 3, LongRunAvgSecondsThreshold: 2 * 3600}
+	report, err := GetDLTAudit(ctx, ws, start, end, cm, settings)
 	assert.NoError(t, err)
 	assert.Equal(t, ws.Name, report.Workspace)
 	assert.Equal(t, "dlt_pipeline", report.ResourceType)
@@ -109,7 +110,8 @@ func TestGetDLTAudit_MixedPipelines_FindingsAndSummary(t *testing.T) {
 	cm.On("GetResourcesCost", mock.Anything, domain.WorkspaceResources{WorkspaceName: ws.Name, Resources: []string{"dlt_pipeline", "dlt_update", "dlt_maintenance"}}, start, end).
 		Return(records, nil)
 
-	report, err := GetDLTAudit(ctx, ws, start, end, cm)
+	settings := DLTAuditSettings{MaintenanceRatioThreshold: 0.3, MinMaintenanceEvents: 3, LongRunAvgSecondsThreshold: 2 * 3600}
+	report, err := GetDLTAudit(ctx, ws, start, end, cm, settings)
 	assert.NoError(t, err)
 
 	// Summary checks
@@ -153,7 +155,8 @@ func TestGetDLTAudit_CostManagerError(t *testing.T) {
 	cm.On("GetResourcesCost", mock.Anything, domain.WorkspaceResources{WorkspaceName: ws.Name, Resources: []string{"dlt_pipeline", "dlt_update", "dlt_maintenance"}}, start, end).
 		Return(nil, errExpected)
 
-	_, err := GetDLTAudit(ctx, ws, start, end, cm)
+	settings := DLTAuditSettings{MaintenanceRatioThreshold: 0.3, MinMaintenanceEvents: 3, LongRunAvgSecondsThreshold: 2 * 3600}
+	_, err := GetDLTAudit(ctx, ws, start, end, cm, settings)
 	assert.ErrorIs(t, err, errExpected)
 	cm.AssertExpectations(t)
 }

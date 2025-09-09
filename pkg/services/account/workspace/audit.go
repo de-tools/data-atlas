@@ -8,12 +8,25 @@ import (
 	"github.com/de-tools/data-atlas/pkg/models/domain"
 )
 
+// DLTAuditSettings holds configurable thresholds for DLT audit findings.
+type DLTAuditSettings struct {
+	// MaintenanceRatioThreshold is the minimum share of maintenance events (0..1) to flag overhead.
+	MaintenanceRatioThreshold float64
+
+	// MinMaintenanceEvents is the minimum count of maintenance events to consider for overhead findings.
+	MinMaintenanceEvents int
+
+	// LongRunAvgSecondsThreshold is the average update duration in seconds above which updates are flagged as long-running.
+	LongRunAvgSecondsThreshold float64
+}
+
 // GetDLTAudit computes DLT pipelines audit for a workspace over the period.
 func GetDLTAudit(
 	ctx context.Context,
 	ws domain.Workspace,
 	startTime, endTime time.Time,
 	costManager CostManager,
+	settings DLTAuditSettings,
 ) (domain.AuditReport, error) {
 	// Collect DLT-related usage
 	resources := domain.WorkspaceResources{WorkspaceName: ws.Name, Resources: []string{"dlt_pipeline", "dlt_update", "dlt_maintenance"}}
@@ -87,6 +100,7 @@ func GetDLTAudit(
 	}
 
 	var totalPipelines, highMaintenance, longRuns int
+
 	for pid, a := range pipelines {
 		totalPipelines++
 		maintenanceRatio := 0.0
@@ -100,7 +114,7 @@ func GetDLTAudit(
 			avgRunSec = a.totalDurationSec / float64(runEvents)
 		}
 
-		if maintenanceRatio > 0.3 && a.maintenanceCount >= 3 {
+		if maintenanceRatio > settings.MaintenanceRatioThreshold && a.maintenanceCount >= settings.MinMaintenanceEvents {
 			highMaintenance++
 			report.Findings = append(report.Findings, domain.AuditFinding{
 				Id:             fmt.Sprintf("%s_high_maintenance_overhead", pid),
@@ -112,7 +126,7 @@ func GetDLTAudit(
 			})
 		}
 
-		if avgRunSec > 2*3600 {
+		if avgRunSec > settings.LongRunAvgSecondsThreshold {
 			longRuns++
 			report.Findings = append(report.Findings, domain.AuditFinding{
 				Id:             fmt.Sprintf("%s_long_running_updates", pid),
