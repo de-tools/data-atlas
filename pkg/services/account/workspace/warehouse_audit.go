@@ -142,14 +142,69 @@ func GetWarehouseAudit(
 	return report, nil
 }
 
+// generateSummaryMetrics creates comprehensive summary metrics for the audit report
+func generateSummaryMetrics(report *domain.AuditReport, records []domain.ResourceCost, warehouseMetadata map[string]domain.WarehouseMetadata) {
+	// Calculate basic metrics
+	warehousesEvaluated := len(warehouseMetadata)
+	if warehousesEvaluated == 0 {
+		// Count unique warehouses from records if no metadata
+		warehouseIDs := make(map[string]bool)
+		for _, record := range records {
+			warehouseIDs[record.Resource.Name] = true
+		}
+		warehousesEvaluated = len(warehouseIDs)
+	}
+
+	// Calculate total cost
+	totalCostAnalyzed := 0.0
+	var currency string
+	for _, record := range records {
+		for _, cost := range record.Costs {
+			totalCostAnalyzed += cost.TotalAmount
+			if currency == "" {
+				currency = cost.Currency
+			}
+		}
+	}
+
+	report.Summary["warehouses_evaluated"] = warehousesEvaluated
+	report.Summary["total_cost_analyzed"] = totalCostAnalyzed
+	if currency != "" {
+		report.Summary["currency"] = currency
+	}
+
+	// Count findings by severity
+	severityCounts := map[domain.Severity]int{
+		domain.SeverityHigh:   0,
+		domain.SeverityMedium: 0,
+		domain.SeverityLow:    0,
+	}
+
+	for _, finding := range report.Findings {
+		severityCounts[finding.Severity]++
+	}
+
+	report.Summary["high_severity_findings"] = severityCounts[domain.SeverityHigh]
+	report.Summary["medium_severity_findings"] = severityCounts[domain.SeverityMedium]
+	report.Summary["low_severity_findings"] = severityCounts[domain.SeverityLow]
+	report.Summary["total_findings"] = len(report.Findings)
+
+	// Generate audit status message
+	if len(report.Findings) == 0 {
+		report.Summary["audit_status"] = "All warehouses passed audit checks - no issues detected"
+	} else {
+		report.Summary["audit_status"] = fmt.Sprintf("Audit completed - found %d optimization opportunities across %d warehouses", len(report.Findings), warehousesEvaluated)
+	}
+}
+
 // analyzeRuntimeDuration analyzes warehouse runtime patterns and returns audit findings
 func analyzeRuntimeDuration(records []domain.ResourceCost, settings WarehouseAuditSettings) []domain.AuditFinding {
-	runtimeStats := aggregateWarehouseRuntimeStats(records, settings)
+	runtimeStats := aggregateWarehouseRuntimeStats(records)
 	return generateRuntimeFindings(runtimeStats, settings)
 }
 
 // aggregateWarehouseRuntimeStats aggregates warehouse usage records and calculates runtime statistics
-func aggregateWarehouseRuntimeStats(records []domain.ResourceCost, settings WarehouseAuditSettings) map[string]*WarehouseRuntimeStats {
+func aggregateWarehouseRuntimeStats(records []domain.ResourceCost) map[string]*WarehouseRuntimeStats {
 	warehouseStats := make(map[string]*WarehouseRuntimeStats)
 
 	for _, record := range records {
@@ -319,12 +374,12 @@ type WarehouseSizeInfo struct {
 
 // analyzeWarehouseSizes analyzes warehouse sizes and returns audit findings
 func analyzeWarehouseSizes(records []domain.ResourceCost, warehouseMetadata map[string]domain.WarehouseMetadata, settings WarehouseAuditSettings) []domain.AuditFinding {
-	sizeInfo := extractWarehouseSizeInfo(records, warehouseMetadata, settings)
+	sizeInfo := extractWarehouseSizeInfo(records, warehouseMetadata)
 	return generateSizeFindings(sizeInfo, settings)
 }
 
 // extractWarehouseSizeInfo extracts warehouse size information using metadata and usage records
-func extractWarehouseSizeInfo(records []domain.ResourceCost, warehouseMetadata map[string]domain.WarehouseMetadata, settings WarehouseAuditSettings) map[string]*WarehouseSizeInfo {
+func extractWarehouseSizeInfo(records []domain.ResourceCost, warehouseMetadata map[string]domain.WarehouseMetadata) map[string]*WarehouseSizeInfo {
 	warehouseSizes := make(map[string]*WarehouseSizeInfo)
 
 	// Create size info for warehouses with available metadata
@@ -555,12 +610,12 @@ type WarehouseBestPracticesInfo struct {
 
 // analyzeBestPracticesCompliance analyzes best practices compliance and returns audit findings
 func analyzeBestPracticesCompliance(records []domain.ResourceCost, warehouseMetadata map[string]domain.WarehouseMetadata, settings WarehouseAuditSettings) []domain.AuditFinding {
-	bestPracticesInfo := extractBestPracticesInfo(records, warehouseMetadata, settings)
-	return generateBestPracticesFindings(bestPracticesInfo, settings)
+	bestPracticesInfo := extractBestPracticesInfo(records, warehouseMetadata)
+	return generateBestPracticesFindings(bestPracticesInfo)
 }
 
 // extractBestPracticesInfo evaluates warehouse configurations against best practices
-func extractBestPracticesInfo(records []domain.ResourceCost, warehouseMetadata map[string]domain.WarehouseMetadata, settings WarehouseAuditSettings) map[string]*WarehouseBestPracticesInfo {
+func extractBestPracticesInfo(records []domain.ResourceCost, warehouseMetadata map[string]domain.WarehouseMetadata) map[string]*WarehouseBestPracticesInfo {
 	bestPracticesInfo := make(map[string]*WarehouseBestPracticesInfo)
 
 	// Create best practices info for warehouses with available metadata
@@ -652,7 +707,7 @@ func evaluateBestPractices(info *WarehouseBestPracticesInfo) {
 }
 
 // generateBestPracticesFindings creates audit findings for warehouses with best practices issues
-func generateBestPracticesFindings(bestPracticesInfo map[string]*WarehouseBestPracticesInfo, settings WarehouseAuditSettings) []domain.AuditFinding {
+func generateBestPracticesFindings(bestPracticesInfo map[string]*WarehouseBestPracticesInfo) []domain.AuditFinding {
 	var findings []domain.AuditFinding
 
 	for warehouseID, info := range bestPracticesInfo {
@@ -987,59 +1042,6 @@ func generateStaleResourcesFindings(staleResourcesInfo map[string]*WarehouseStal
 	}
 
 	return findings
-}
-
-// updateStaleResourcesSummary updates the audit report summary with stale resources analysis results
-func updateStaleResourcesSummary(report *domain.AuditReport, staleResourcesInfo map[string]*WarehouseStaleResourceInfo, settings WarehouseAuditSettings) {
-	staleWarehousesCount := 0
-	orphanedWarehousesCount := 0
-	neverStartedCount := 0
-	zeroQueryActivityCount := 0
-	totalStaleResourceCost := 0.0
-	var currency string
-
-	for _, info := range staleResourcesInfo {
-		if info.IsStale {
-			staleWarehousesCount++
-			totalStaleResourceCost += info.TotalCost
-			if currency == "" {
-				currency = info.Currency
-			}
-		}
-
-		if info.IsOrphaned {
-			orphanedWarehousesCount++
-		}
-
-		if info.NeverStarted {
-			neverStartedCount++
-		}
-
-		if info.QueryCount == 0 && info.HasActivity {
-			zeroQueryActivityCount++
-		}
-	}
-
-	report.Summary["stale_warehouses_count"] = staleWarehousesCount
-	report.Summary["orphaned_warehouses_count"] = orphanedWarehousesCount
-	report.Summary["never_started_warehouses_count"] = neverStartedCount
-	report.Summary["zero_query_activity_count"] = zeroQueryActivityCount
-	report.Summary["total_stale_resource_cost"] = totalStaleResourceCost
-
-	if currency != "" {
-		report.Summary["stale_resource_currency"] = currency
-	}
-
-	// Calculate potential savings from stale resources
-	if totalStaleResourceCost > 0 {
-		// Estimate potential monthly savings if stale resources were removed
-		// This is a rough estimate based on the analysis period
-		analysisPeriodDays := report.Period.Duration
-		if analysisPeriodDays > 0 {
-			monthlySavings := (totalStaleResourceCost / float64(analysisPeriodDays)) * 30
-			report.Summary["potential_monthly_savings_from_stale_resources"] = monthlySavings
-		}
-	}
 }
 
 // WarehouseProvisioningInfo represents provisioning analysis information for a warehouse
@@ -1437,105 +1439,4 @@ func generateProvisioningFindings(provisioningInfo map[string]*WarehouseProvisio
 	}
 
 	return findings
-}
-
-// updateProvisioningSummary updates the audit report summary with provisioning analysis results
-func updateProvisioningSummary(report *domain.AuditReport, provisioningInfo map[string]*WarehouseProvisioningInfo, settings WarehouseAuditSettings) {
-	overProvisionedCount := 0
-	underProvisionedCount := 0
-	totalPotentialSavings := 0.0
-	totalResourceUtilization := 0.0
-	warehousesAnalyzed := 0
-	var currency string
-
-	for _, info := range provisioningInfo {
-		// Only count warehouses with sufficient query activity
-		if info.QueryCount >= settings.MinQueryCountThreshold {
-			warehousesAnalyzed++
-			totalResourceUtilization += info.AvgResourceUtilization
-
-			if info.IsOverProvisioned {
-				overProvisionedCount++
-				totalPotentialSavings += info.PotentialSavings
-				if currency == "" {
-					currency = info.Currency
-				}
-			}
-
-			if info.IsUnderProvisioned {
-				underProvisionedCount++
-			}
-		}
-	}
-
-	report.Summary["over_provisioned_count"] = overProvisionedCount
-	report.Summary["under_provisioned_count"] = underProvisionedCount
-	report.Summary["warehouses_analyzed_for_provisioning"] = warehousesAnalyzed
-
-	if warehousesAnalyzed > 0 {
-		avgUtilization := totalResourceUtilization / float64(warehousesAnalyzed)
-		report.Summary["average_resource_utilization"] = fmt.Sprintf("%.1f%%", avgUtilization*100)
-	}
-
-	if totalPotentialSavings > 0 {
-		report.Summary["potential_savings_from_rightsizing"] = totalPotentialSavings
-		if currency != "" {
-			report.Summary["potential_savings_currency"] = currency
-		}
-	}
-}
-
-// generateSummaryMetrics creates comprehensive summary metrics for the audit report
-func generateSummaryMetrics(report *domain.AuditReport, records []domain.ResourceCost, warehouseMetadata map[string]domain.WarehouseMetadata) {
-	// Calculate basic metrics
-	warehousesEvaluated := len(warehouseMetadata)
-	if warehousesEvaluated == 0 {
-		// Count unique warehouses from records if no metadata
-		warehouseIDs := make(map[string]bool)
-		for _, record := range records {
-			warehouseIDs[record.Resource.Name] = true
-		}
-		warehousesEvaluated = len(warehouseIDs)
-	}
-
-	// Calculate total cost
-	totalCostAnalyzed := 0.0
-	var currency string
-	for _, record := range records {
-		for _, cost := range record.Costs {
-			totalCostAnalyzed += cost.TotalAmount
-			if currency == "" {
-				currency = cost.Currency
-			}
-		}
-	}
-
-	report.Summary["warehouses_evaluated"] = warehousesEvaluated
-	report.Summary["total_cost_analyzed"] = totalCostAnalyzed
-	if currency != "" {
-		report.Summary["currency"] = currency
-	}
-
-	// Count findings by severity
-	severityCounts := map[domain.Severity]int{
-		domain.SeverityHigh:   0,
-		domain.SeverityMedium: 0,
-		domain.SeverityLow:    0,
-	}
-
-	for _, finding := range report.Findings {
-		severityCounts[finding.Severity]++
-	}
-
-	report.Summary["high_severity_findings"] = severityCounts[domain.SeverityHigh]
-	report.Summary["medium_severity_findings"] = severityCounts[domain.SeverityMedium]
-	report.Summary["low_severity_findings"] = severityCounts[domain.SeverityLow]
-	report.Summary["total_findings"] = len(report.Findings)
-
-	// Generate audit status message
-	if len(report.Findings) == 0 {
-		report.Summary["audit_status"] = "All warehouses passed audit checks - no issues detected"
-	} else {
-		report.Summary["audit_status"] = fmt.Sprintf("Audit completed - found %d optimization opportunities across %d warehouses", len(report.Findings), warehousesEvaluated)
-	}
 }

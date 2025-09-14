@@ -204,14 +204,45 @@ func (r *Router) SyncWorkspace(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (r *Router) GetWarehouseAudit(writer http.ResponseWriter, request *http.Request) {
-	// TODO:
-	// - Runs for too long, or Idle Workloads
-	// - WH is to big
-	// - Budgets / Alerts are set (based on DBU consumption)
-	// - Removes stale / orphaned resources
-	// - Right Size for Resource -> over provision e.g. large cluster running small workloads
-	panic("Implement me")
+func (r *Router) GetWarehouseAudit(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+	ws := getWorkspaceFromPath(req)
+
+	endTime, err := parseDateParam(req, "to", time.Now())
+	if err != nil {
+		handleError(ctx, w, http.StatusBadRequest, err)
+		return
+	}
+
+	startTime, err := parseDateParam(req, "from", time.Now().AddDate(0, 0, -defaultInterval))
+	if err != nil {
+		handleError(ctx, w, http.StatusBadRequest, err)
+		return
+	}
+
+	costManager, err := r.explorer.GetWorkspaceCostManagerCached(ctx, ws)
+	if err != nil {
+		handleError(ctx, w, http.StatusNotFound, err)
+		return
+	}
+
+	explorer, err := r.explorer.GetWorkspaceExplorer(ctx, ws)
+	if err != nil {
+		handleError(ctx, w, http.StatusNotFound, err)
+		return
+	}
+
+	// For now construct audit settings here; later can be provided via DI
+	settings := workspace.DefaultWarehouseAuditSettings()
+	report, err := workspace.GetWarehouseAudit(ctx, ws, startTime, endTime, costManager, explorer, settings)
+	if err != nil {
+		handleError(ctx, w, http.StatusInternalServerError, err)
+		return
+	}
+
+	if err := jsonResponse(w, adapters.MapAuditReportDomainToApi(report)); err != nil {
+		handleError(ctx, w, http.StatusInternalServerError, err)
+	}
 }
 
 func (r *Router) GetClusterAudit(writer http.ResponseWriter, request *http.Request) {
