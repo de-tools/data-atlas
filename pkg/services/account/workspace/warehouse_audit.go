@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/de-tools/data-atlas/pkg/models/domain"
-	"github.com/rs/zerolog/log"
 )
 
 // WarehouseAuditSettings contains configurable thresholds for warehouse audit analysis
@@ -37,6 +36,33 @@ func DefaultWarehouseAuditSettings() WarehouseAuditSettings {
 	}
 }
 
+// fetchWarehouseMetadata retrieves metadata for all warehouses (from usage records and explorer)
+func fetchWarehouseMetadata(ctx context.Context, records []domain.ResourceCost, explorer Explorer) map[string]domain.WarehouseMetadata {
+	warehouseMetadata := make(map[string]domain.WarehouseMetadata)
+
+	// Get unique warehouse IDs from usage records
+	warehouseIDs := make(map[string]bool)
+	for _, record := range records {
+		warehouseIDs[record.Resource.Name] = true
+	}
+
+	// Also get all warehouses from explorer to detect orphaned ones
+	if allWarehouses, err := explorer.ListWarehouses(ctx); err == nil {
+		for _, warehouse := range allWarehouses {
+			warehouseIDs[warehouse.ID] = true
+		}
+	}
+
+	// Fetch metadata for each warehouse
+	for warehouseID := range warehouseIDs {
+		if metadata, err := explorer.GetWarehouseMetadata(ctx, warehouseID); err == nil {
+			warehouseMetadata[warehouseID] = *metadata
+		}
+	}
+
+	return warehouseMetadata
+}
+
 // WarehouseRuntimeStats holds runtime analysis data for a warehouse
 type WarehouseRuntimeStats struct {
 	WarehouseID       string
@@ -57,7 +83,6 @@ func GetWarehouseAudit(
 	explorer Explorer,
 	settings WarehouseAuditSettings,
 ) (domain.AuditReport, error) {
-	logger := log.Ctx(ctx)
 	// Initialize audit report
 	report := domain.AuditReport{
 		Workspace:    ws.Name,
@@ -95,71 +120,36 @@ func GetWarehouseAudit(
 		return report, nil
 	}
 
-	// Analyze runtime duration patterns
-	runtimeStats := analyzeWarehouseRuntimeDuration(records, settings)
-
-	// Generate runtime-related audit findings
-	runtimeFindings := generateRuntimeFindings(runtimeStats, settings)
-	report.Findings = append(report.Findings, runtimeFindings...)
-
-	// Update summary with runtime analysis results
-	updateRuntimeSummary(&report, runtimeStats, settings)
-
-	// Analyze warehouse sizes and generate size-related findings
+	// Fetch warehouse metadata once for reuse across all analyses
+	warehouseMetadata := make(map[string]domain.WarehouseMetadata)
 	if explorer != nil {
-		sizeAnalysis, err := analyzeWarehouseSizes(ctx, records, explorer, settings)
-		if err != nil {
-			logger.Err(err).Msg("faield to run analyzeWarehouseSizes")
-		} else {
-			sizeFindings := generateSizeFindings(sizeAnalysis, settings)
-			report.Findings = append(report.Findings, sizeFindings...)
-
-			// Update summary with size analysis results
-			updateSizeSummary(&report, sizeAnalysis, settings)
-		}
-
-		// Analyze best practices compliance and generate findings
-		bestPracticesAnalysis, err := analyzeBestPracticesCompliance(ctx, records, explorer, settings)
-		if err != nil {
-			logger.Err(err).Msg("failed to run analyzeBestPracticesCompliance")
-		} else {
-			bestPracticesFindings := generateBestPracticesFindings(bestPracticesAnalysis, settings)
-			report.Findings = append(report.Findings, bestPracticesFindings...)
-
-			// Update summary with best practices analysis results
-			updateBestPracticesSummary(&report, bestPracticesAnalysis, settings)
-		}
-
-		// Analyze stale resources and generate findings
-		staleResourcesAnalysis, err := analyzeStaleResources(ctx, records, explorer, settings, startTime, endTime)
-		if err != nil {
-			logger.Err(err).Msg("failed to run analyzeStaleResources")
-		} else {
-			staleResourcesFindings := generateStaleResourcesFindings(staleResourcesAnalysis, settings)
-			report.Findings = append(report.Findings, staleResourcesFindings...)
-
-			// Update summary with stale resources analysis results
-			updateStaleResourcesSummary(&report, staleResourcesAnalysis, settings)
-		}
-
-		// Analyze provisioning patterns and generate findings
-		provisioningAnalysis, err := analyzeProvisioningPatterns(ctx, records, explorer, settings)
-		if err != nil {
-			logger.Err(err).Msg("failed to run analyzeProvisioningPatterns")
-		} else {
-			provisioningFindings := generateProvisioningFindings(provisioningAnalysis, settings)
-			report.Findings = append(report.Findings, provisioningFindings...)
-
-			// Update summary with provisioning analysis results
-			updateProvisioningSummary(&report, provisioningAnalysis, settings)
-		}
+		warehouseMetadata = fetchWarehouseMetadata(ctx, records, explorer)
 	}
+
+	// Run all analyses and collect findings
+	report.Findings = append(report.Findings, analyzeRuntimeDuration(records, settings)...)
+
+	if explorer != nil {
+		report.Findings = append(report.Findings, analyzeWarehouseSizes(records, warehouseMetadata, settings)...)
+		report.Findings = append(report.Findings, analyzeBestPracticesCompliance(records, warehouseMetadata, settings)...)
+		report.Findings = append(report.Findings, analyzeStaleResources(records, warehouseMetadata, settings, startTime, endTime)...)
+		report.Findings = append(report.Findings, analyzeProvisioningPatterns(records, warehouseMetadata, settings)...)
+	}
+
+	// Generate summary metrics
+	generateSummaryMetrics(&report, records, warehouseMetadata)
 
 	return report, nil
 }
 
-// analyzeWarehouseRuntimeDuration aggregates warehouse usage records and calculates runtime statistics
-func analyzeWarehouseRuntimeDuration(records []domain.ResourceCost, settings WarehouseAuditSettings) map[string]*WarehouseRuntimeStats {
+// analyzeRuntimeDuration analyzes warehouse runtime patterns and returns audit findings
+func analyzeRuntimeDuration(records []domain.ResourceCost, settings WarehouseAuditSettings) []domain.AuditFinding {
+	runtimeStats := aggregateWarehouseRuntimeStats(records, settings)
+	return generateRuntimeFindings(runtimeStats, settings)
+}
+
+// aggregateWarehouseRuntimeStats aggregates warehouse usage records and calculates runtime statistics
+func aggregateWarehouseRuntimeStats(records []domain.ResourceCost, settings WarehouseAuditSettings) map[string]*WarehouseRuntimeStats {
 	warehouseStats := make(map[string]*WarehouseRuntimeStats)
 
 	for _, record := range records {
@@ -327,24 +317,18 @@ type WarehouseSizeInfo struct {
 	SizeScore    float64 // Calculated score for ranking by size
 }
 
-// analyzeWarehouseSizes extracts warehouse size information using explorer and usage records
-func analyzeWarehouseSizes(ctx context.Context, records []domain.ResourceCost, explorer Explorer, settings WarehouseAuditSettings) (map[string]*WarehouseSizeInfo, error) {
+// analyzeWarehouseSizes analyzes warehouse sizes and returns audit findings
+func analyzeWarehouseSizes(records []domain.ResourceCost, warehouseMetadata map[string]domain.WarehouseMetadata, settings WarehouseAuditSettings) []domain.AuditFinding {
+	sizeInfo := extractWarehouseSizeInfo(records, warehouseMetadata, settings)
+	return generateSizeFindings(sizeInfo, settings)
+}
+
+// extractWarehouseSizeInfo extracts warehouse size information using metadata and usage records
+func extractWarehouseSizeInfo(records []domain.ResourceCost, warehouseMetadata map[string]domain.WarehouseMetadata, settings WarehouseAuditSettings) map[string]*WarehouseSizeInfo {
 	warehouseSizes := make(map[string]*WarehouseSizeInfo)
 
-	// Get unique warehouse IDs from usage records
-	warehouseIDs := make(map[string]bool)
-	for _, record := range records {
-		warehouseIDs[record.Resource.Name] = true
-	}
-
-	// Fetch metadata for each warehouse
-	for warehouseID := range warehouseIDs {
-		metadata, err := explorer.GetWarehouseMetadata(ctx, warehouseID)
-		if err != nil {
-			// Skip warehouses where we can't get metadata
-			continue
-		}
-
+	// Create size info for warehouses with available metadata
+	for warehouseID, metadata := range warehouseMetadata {
 		sizeInfo := &WarehouseSizeInfo{
 			WarehouseID:  warehouseID,
 			Name:         metadata.Name,
@@ -381,7 +365,7 @@ func analyzeWarehouseSizes(ctx context.Context, records []domain.ResourceCost, e
 		}
 	}
 
-	return warehouseSizes, nil
+	return warehouseSizes
 }
 
 // calculateNodeCount estimates the number of nodes based on warehouse size and cluster configuration
@@ -569,24 +553,18 @@ type WarehouseBestPracticesInfo struct {
 	Currency         string
 }
 
-// analyzeBestPracticesCompliance evaluates warehouse configurations against best practices
-func analyzeBestPracticesCompliance(ctx context.Context, records []domain.ResourceCost, explorer Explorer, settings WarehouseAuditSettings) (map[string]*WarehouseBestPracticesInfo, error) {
+// analyzeBestPracticesCompliance analyzes best practices compliance and returns audit findings
+func analyzeBestPracticesCompliance(records []domain.ResourceCost, warehouseMetadata map[string]domain.WarehouseMetadata, settings WarehouseAuditSettings) []domain.AuditFinding {
+	bestPracticesInfo := extractBestPracticesInfo(records, warehouseMetadata, settings)
+	return generateBestPracticesFindings(bestPracticesInfo, settings)
+}
+
+// extractBestPracticesInfo evaluates warehouse configurations against best practices
+func extractBestPracticesInfo(records []domain.ResourceCost, warehouseMetadata map[string]domain.WarehouseMetadata, settings WarehouseAuditSettings) map[string]*WarehouseBestPracticesInfo {
 	bestPracticesInfo := make(map[string]*WarehouseBestPracticesInfo)
 
-	// Get unique warehouse IDs from usage records
-	warehouseIDs := make(map[string]bool)
-	for _, record := range records {
-		warehouseIDs[record.Resource.Name] = true
-	}
-
-	// Fetch metadata for each warehouse and analyze best practices
-	for warehouseID := range warehouseIDs {
-		metadata, err := explorer.GetWarehouseMetadata(ctx, warehouseID)
-		if err != nil {
-			// Skip warehouses where we can't get metadata
-			continue
-		}
-
+	// Create best practices info for warehouses with available metadata
+	for warehouseID, metadata := range warehouseMetadata {
 		info := &WarehouseBestPracticesInfo{
 			WarehouseID:      warehouseID,
 			Name:             metadata.Name,
@@ -621,7 +599,7 @@ func analyzeBestPracticesCompliance(ctx context.Context, records []domain.Resour
 		}
 	}
 
-	return bestPracticesInfo, nil
+	return bestPracticesInfo
 }
 
 // evaluateBestPractices calculates compliance score and identifies missing best practices
@@ -832,8 +810,14 @@ type WarehouseStaleResourceInfo struct {
 	Currency          string
 }
 
-// analyzeStaleResources identifies warehouses with no recent activity or that are orphaned
-func analyzeStaleResources(ctx context.Context, records []domain.ResourceCost, explorer Explorer, settings WarehouseAuditSettings, startTime, endTime time.Time) (map[string]*WarehouseStaleResourceInfo, error) {
+// analyzeStaleResources analyzes stale resources and returns audit findings
+func analyzeStaleResources(records []domain.ResourceCost, warehouseMetadata map[string]domain.WarehouseMetadata, settings WarehouseAuditSettings, startTime, endTime time.Time) []domain.AuditFinding {
+	staleResourcesInfo := extractStaleResourcesInfo(records, warehouseMetadata, settings, startTime, endTime)
+	return generateStaleResourcesFindings(staleResourcesInfo, settings)
+}
+
+// extractStaleResourcesInfo identifies warehouses with no recent activity or that are orphaned
+func extractStaleResourcesInfo(records []domain.ResourceCost, warehouseMetadata map[string]domain.WarehouseMetadata, settings WarehouseAuditSettings, startTime, endTime time.Time) map[string]*WarehouseStaleResourceInfo {
 	staleResourcesInfo := make(map[string]*WarehouseStaleResourceInfo)
 
 	// Get unique warehouse IDs from usage records
@@ -842,31 +826,21 @@ func analyzeStaleResources(ctx context.Context, records []domain.ResourceCost, e
 		warehouseIDs[record.Resource.Name] = true
 	}
 
-	// If we have an explorer, also get all warehouses from metadata to detect orphaned ones
-	if explorer != nil {
-		allWarehouses, err := explorer.ListWarehouses(ctx)
-		if err == nil {
-			for _, warehouse := range allWarehouses {
-				warehouseIDs[warehouse.ID] = true
-			}
-		}
+	// Add warehouses from metadata (to detect orphaned ones)
+	for warehouseID := range warehouseMetadata {
+		warehouseIDs[warehouseID] = true
 	}
 
 	// Analyze each warehouse for stale resource patterns
 	for warehouseID := range warehouseIDs {
 		info := &WarehouseStaleResourceInfo{
 			WarehouseID: warehouseID,
-			Name:        warehouseID, // Default to ID, will be updated if metadata is available
+			Name:        warehouseID, // Default to ID
 		}
 
-		// Get warehouse metadata if explorer is available
-		if explorer != nil {
-			metadata, err := explorer.GetWarehouseMetadata(ctx, warehouseID)
-			if err == nil {
-				info.Name = metadata.Name
-				// Note: CreatedTime would need to be added to warehouse metadata
-				// For now, we'll work with what's available
-			}
+		// Update name from metadata if available
+		if metadata, exists := warehouseMetadata[warehouseID]; exists {
+			info.Name = metadata.Name
 		}
 
 		staleResourcesInfo[warehouseID] = info
@@ -919,7 +893,7 @@ func analyzeStaleResources(ctx context.Context, records []domain.ResourceCost, e
 		info.NeverStarted = info.QueryCount == 0 && !info.HasActivity
 	}
 
-	return staleResourcesInfo, nil
+	return staleResourcesInfo
 }
 
 // generateStaleResourcesFindings creates audit findings for stale and orphaned warehouses
@@ -1088,24 +1062,18 @@ type WarehouseProvisioningInfo struct {
 	PotentialSavings       float64
 }
 
-// analyzeProvisioningPatterns analyzes correlation between query complexity and warehouse size
-func analyzeProvisioningPatterns(ctx context.Context, records []domain.ResourceCost, explorer Explorer, settings WarehouseAuditSettings) (map[string]*WarehouseProvisioningInfo, error) {
+// analyzeProvisioningPatterns analyzes provisioning patterns and returns audit findings
+func analyzeProvisioningPatterns(records []domain.ResourceCost, warehouseMetadata map[string]domain.WarehouseMetadata, settings WarehouseAuditSettings) []domain.AuditFinding {
+	provisioningInfo := extractProvisioningInfo(records, warehouseMetadata, settings)
+	return generateProvisioningFindings(provisioningInfo, settings)
+}
+
+// extractProvisioningInfo analyzes correlation between query complexity and warehouse size
+func extractProvisioningInfo(records []domain.ResourceCost, warehouseMetadata map[string]domain.WarehouseMetadata, settings WarehouseAuditSettings) map[string]*WarehouseProvisioningInfo {
 	provisioningInfo := make(map[string]*WarehouseProvisioningInfo)
 
-	// Get unique warehouse IDs from usage records
-	warehouseIDs := make(map[string]bool)
-	for _, record := range records {
-		warehouseIDs[record.Resource.Name] = true
-	}
-
-	// Fetch metadata for each warehouse
-	for warehouseID := range warehouseIDs {
-		metadata, err := explorer.GetWarehouseMetadata(ctx, warehouseID)
-		if err != nil {
-			// Skip warehouses where we can't get metadata
-			continue
-		}
-
+	// Create provisioning info for warehouses with available metadata
+	for warehouseID, metadata := range warehouseMetadata {
 		info := &WarehouseProvisioningInfo{
 			WarehouseID: warehouseID,
 			Name:        metadata.Name,
@@ -1164,7 +1132,7 @@ func analyzeProvisioningPatterns(ctx context.Context, records []domain.ResourceC
 		}
 	}
 
-	return provisioningInfo, nil
+	return provisioningInfo
 }
 
 // estimateQueryComplexity estimates query complexity based on cost patterns and execution time
@@ -1514,5 +1482,60 @@ func updateProvisioningSummary(report *domain.AuditReport, provisioningInfo map[
 		if currency != "" {
 			report.Summary["potential_savings_currency"] = currency
 		}
+	}
+}
+
+// generateSummaryMetrics creates comprehensive summary metrics for the audit report
+func generateSummaryMetrics(report *domain.AuditReport, records []domain.ResourceCost, warehouseMetadata map[string]domain.WarehouseMetadata) {
+	// Calculate basic metrics
+	warehousesEvaluated := len(warehouseMetadata)
+	if warehousesEvaluated == 0 {
+		// Count unique warehouses from records if no metadata
+		warehouseIDs := make(map[string]bool)
+		for _, record := range records {
+			warehouseIDs[record.Resource.Name] = true
+		}
+		warehousesEvaluated = len(warehouseIDs)
+	}
+
+	// Calculate total cost
+	totalCostAnalyzed := 0.0
+	var currency string
+	for _, record := range records {
+		for _, cost := range record.Costs {
+			totalCostAnalyzed += cost.TotalAmount
+			if currency == "" {
+				currency = cost.Currency
+			}
+		}
+	}
+
+	report.Summary["warehouses_evaluated"] = warehousesEvaluated
+	report.Summary["total_cost_analyzed"] = totalCostAnalyzed
+	if currency != "" {
+		report.Summary["currency"] = currency
+	}
+
+	// Count findings by severity
+	severityCounts := map[domain.Severity]int{
+		domain.SeverityHigh:   0,
+		domain.SeverityMedium: 0,
+		domain.SeverityLow:    0,
+	}
+
+	for _, finding := range report.Findings {
+		severityCounts[finding.Severity]++
+	}
+
+	report.Summary["high_severity_findings"] = severityCounts[domain.SeverityHigh]
+	report.Summary["medium_severity_findings"] = severityCounts[domain.SeverityMedium]
+	report.Summary["low_severity_findings"] = severityCounts[domain.SeverityLow]
+	report.Summary["total_findings"] = len(report.Findings)
+
+	// Generate audit status message
+	if len(report.Findings) == 0 {
+		report.Summary["audit_status"] = "All warehouses passed audit checks - no issues detected"
+	} else {
+		report.Summary["audit_status"] = fmt.Sprintf("Audit completed - found %d optimization opportunities across %d warehouses", len(report.Findings), warehousesEvaluated)
 	}
 }
