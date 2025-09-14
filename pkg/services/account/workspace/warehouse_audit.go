@@ -141,6 +141,18 @@ func GetWarehouseAudit(
 			// Update summary with stale resources analysis results
 			updateStaleResourcesSummary(&report, staleResourcesAnalysis, settings)
 		}
+
+		// Analyze provisioning patterns and generate findings
+		provisioningAnalysis, err := analyzeProvisioningPatterns(ctx, records, explorer, settings)
+		if err != nil {
+			logger.Err(err).Msg("failed to run analyzeProvisioningPatterns")
+		} else {
+			provisioningFindings := generateProvisioningFindings(provisioningAnalysis, settings)
+			report.Findings = append(report.Findings, provisioningFindings...)
+
+			// Update summary with provisioning analysis results
+			updateProvisioningSummary(&report, provisioningAnalysis, settings)
+		}
 	}
 
 	return report, nil
@@ -1052,6 +1064,455 @@ func updateStaleResourcesSummary(report *domain.AuditReport, staleResourcesInfo 
 		if analysisPeriodDays > 0 {
 			monthlySavings := (totalStaleResourceCost / float64(analysisPeriodDays)) * 30
 			report.Summary["potential_monthly_savings_from_stale_resources"] = monthlySavings
+		}
+	}
+}
+
+// WarehouseProvisioningInfo represents provisioning analysis information for a warehouse
+type WarehouseProvisioningInfo struct {
+	WarehouseID            string
+	Name                   string
+	Size                   string
+	NodeCount              int
+	MaxClusters            int
+	QueryCount             int
+	TotalCost              float64
+	UsageHours             float64
+	Currency               string
+	AvgResourceUtilization float64
+	QueryComplexityScore   float64
+	ProvisioningScore      float64 // Higher score = more over-provisioned
+	IsOverProvisioned      bool
+	IsUnderProvisioned     bool
+	RecommendedSize        string
+	PotentialSavings       float64
+}
+
+// analyzeProvisioningPatterns analyzes correlation between query complexity and warehouse size
+func analyzeProvisioningPatterns(ctx context.Context, records []domain.ResourceCost, explorer Explorer, settings WarehouseAuditSettings) (map[string]*WarehouseProvisioningInfo, error) {
+	provisioningInfo := make(map[string]*WarehouseProvisioningInfo)
+
+	// Get unique warehouse IDs from usage records
+	warehouseIDs := make(map[string]bool)
+	for _, record := range records {
+		warehouseIDs[record.Resource.Name] = true
+	}
+
+	// Fetch metadata for each warehouse
+	for warehouseID := range warehouseIDs {
+		metadata, err := explorer.GetWarehouseMetadata(ctx, warehouseID)
+		if err != nil {
+			// Skip warehouses where we can't get metadata
+			continue
+		}
+
+		info := &WarehouseProvisioningInfo{
+			WarehouseID: warehouseID,
+			Name:        metadata.Name,
+			Size:        metadata.Size,
+			MaxClusters: metadata.MaxNumClusters,
+			NodeCount:   calculateNodeCount(metadata.Size, metadata.MaxNumClusters),
+		}
+
+		provisioningInfo[warehouseID] = info
+	}
+
+	// Analyze usage patterns from records
+	for _, record := range records {
+		warehouseID := record.Resource.Name
+		if info, exists := provisioningInfo[warehouseID]; exists {
+			info.QueryCount++
+
+			// Accumulate cost and usage data
+			for _, cost := range record.Costs {
+				info.TotalCost += cost.TotalAmount
+				if info.Currency == "" {
+					info.Currency = cost.Currency
+				}
+			}
+
+			// Calculate usage hours
+			usageHours := record.EndTime.Sub(record.StartTime).Hours()
+			info.UsageHours += usageHours
+
+			// Estimate query complexity based on cost patterns and duration
+			queryComplexity := estimateQueryComplexity(record, usageHours)
+			info.QueryComplexityScore += queryComplexity
+		}
+	}
+
+	// Calculate provisioning metrics for each warehouse
+	for _, info := range provisioningInfo {
+		if info.QueryCount > 0 {
+			// Average query complexity
+			info.QueryComplexityScore = info.QueryComplexityScore / float64(info.QueryCount)
+
+			// Calculate average resource utilization
+			info.AvgResourceUtilization = calculateResourceUtilization(info)
+
+			// Calculate provisioning score (mismatch between size and complexity)
+			info.ProvisioningScore = calculateProvisioningScore(info)
+
+			// Determine if warehouse is over/under-provisioned
+			analyzeProvisioningMismatch(info, settings)
+
+			// Generate size recommendations
+			info.RecommendedSize = recommendWarehouseSize(info)
+
+			// Estimate potential savings
+			info.PotentialSavings = estimatePotentialSavings(info)
+		}
+	}
+
+	return provisioningInfo, nil
+}
+
+// estimateQueryComplexity estimates query complexity based on cost patterns and execution time
+func estimateQueryComplexity(record domain.ResourceCost, usageHours float64) float64 {
+	if len(record.Costs) == 0 || usageHours == 0 {
+		return 0
+	}
+
+	totalCost := 0.0
+	for _, cost := range record.Costs {
+		totalCost += cost.TotalAmount
+	}
+
+	// Calculate cost per hour as a proxy for query complexity
+	costPerHour := totalCost / usageHours
+
+	// Normalize complexity score (higher cost per hour = more complex queries)
+	// This is a simplified heuristic - in practice, you'd analyze actual query metrics
+	complexityScore := costPerHour * 10 // Scale factor to get reasonable scores
+
+	// Cap the complexity score to prevent outliers
+	if complexityScore > 100 {
+		complexityScore = 100
+	}
+
+	return complexityScore
+}
+
+// calculateResourceUtilization calculates average resource utilization based on cost efficiency
+func calculateResourceUtilization(info *WarehouseProvisioningInfo) float64 {
+	if info.UsageHours == 0 || info.TotalCost == 0 {
+		return 0
+	}
+
+	// Calculate cost per hour
+	costPerHour := info.TotalCost / info.UsageHours
+
+	// Estimate utilization based on warehouse size and cost efficiency
+	// Larger warehouses should have higher cost per hour when fully utilized
+	expectedCostPerHour := getExpectedCostPerHour(info.Size)
+
+	if expectedCostPerHour == 0 {
+		return 0
+	}
+
+	// Utilization = actual cost per hour / expected cost per hour for full utilization
+	utilization := costPerHour / expectedCostPerHour
+
+	// Cap utilization at 100%
+	if utilization > 1.0 {
+		utilization = 1.0
+	}
+
+	return utilization
+}
+
+// getExpectedCostPerHour returns the expected cost per hour for a warehouse size at full utilization
+func getExpectedCostPerHour(size string) float64 {
+	// These are rough estimates based on typical Databricks pricing
+	// In practice, you'd use actual pricing data from your environment
+	switch size {
+	case "2X-Small":
+		return 2.0
+	case "X-Small":
+		return 4.0
+	case "Small":
+		return 8.0
+	case "Medium":
+		return 16.0
+	case "Large":
+		return 32.0
+	case "X-Large":
+		return 64.0
+	case "2X-Large":
+		return 128.0
+	case "3X-Large":
+		return 256.0
+	case "4X-Large":
+		return 512.0
+	default:
+		return 8.0 // Default to Small
+	}
+}
+
+// calculateProvisioningScore calculates a score indicating provisioning mismatch
+func calculateProvisioningScore(info *WarehouseProvisioningInfo) float64 {
+	// Score based on the ratio of warehouse size to query complexity
+	warehouseSizeScore := getWarehouseSizeScore(info.Size)
+
+	if info.QueryComplexityScore == 0 {
+		// If no query complexity detected, large warehouses are likely over-provisioned
+		return warehouseSizeScore
+	}
+
+	// Higher score = more over-provisioned (large warehouse, simple queries)
+	// Lower score = potentially under-provisioned (small warehouse, complex queries)
+	provisioningScore := warehouseSizeScore / (info.QueryComplexityScore + 1)
+
+	return provisioningScore
+}
+
+// getWarehouseSizeScore returns a numeric score for warehouse size
+func getWarehouseSizeScore(size string) float64 {
+	switch size {
+	case "2X-Small":
+		return 1.0
+	case "X-Small":
+		return 2.0
+	case "Small":
+		return 4.0
+	case "Medium":
+		return 8.0
+	case "Large":
+		return 16.0
+	case "X-Large":
+		return 32.0
+	case "2X-Large":
+		return 64.0
+	case "3X-Large":
+		return 128.0
+	case "4X-Large":
+		return 256.0
+	default:
+		return 4.0 // Default to Small
+	}
+}
+
+// analyzeProvisioningMismatch determines if a warehouse is over or under-provisioned
+func analyzeProvisioningMismatch(info *WarehouseProvisioningInfo, settings WarehouseAuditSettings) {
+	// Only analyze warehouses with sufficient query activity
+	if info.QueryCount < settings.MinQueryCountThreshold {
+		return
+	}
+
+	// Over-provisioned: high provisioning score (large warehouse, simple queries)
+	if info.ProvisioningScore > 10.0 && info.AvgResourceUtilization < 0.3 {
+		info.IsOverProvisioned = true
+	}
+
+	// Under-provisioned: low provisioning score with high complexity and utilization
+	if info.ProvisioningScore < 0.5 && info.QueryComplexityScore > 50 && info.AvgResourceUtilization > 0.8 {
+		info.IsUnderProvisioned = true
+	}
+}
+
+// recommendWarehouseSize suggests an appropriate warehouse size based on usage patterns
+func recommendWarehouseSize(info *WarehouseProvisioningInfo) string {
+	// If warehouse is appropriately sized, return current size
+	if !info.IsOverProvisioned && !info.IsUnderProvisioned {
+		return info.Size
+	}
+
+	currentSizeScore := getWarehouseSizeScore(info.Size)
+
+	if info.IsOverProvisioned {
+		// Recommend smaller size based on query complexity
+		targetScore := info.QueryComplexityScore / 10
+		if targetScore < 1 {
+			targetScore = 1
+		}
+		return getSizeFromScore(targetScore)
+	}
+
+	if info.IsUnderProvisioned {
+		// Recommend larger size based on utilization and complexity
+		targetScore := currentSizeScore * 2
+		if targetScore > 256 {
+			targetScore = 256
+		}
+		return getSizeFromScore(targetScore)
+	}
+
+	return info.Size
+}
+
+// getSizeFromScore returns the warehouse size closest to the given score
+func getSizeFromScore(score float64) string {
+	if score <= 1.5 {
+		return "2X-Small"
+	} else if score <= 3.0 {
+		return "X-Small"
+	} else if score <= 6.0 {
+		return "Small"
+	} else if score <= 12.0 {
+		return "Medium"
+	} else if score <= 24.0 {
+		return "Large"
+	} else if score <= 48.0 {
+		return "X-Large"
+	} else if score <= 96.0 {
+		return "2X-Large"
+	} else if score <= 192.0 {
+		return "3X-Large"
+	} else {
+		return "4X-Large"
+	}
+}
+
+// estimatePotentialSavings calculates potential cost savings from right-sizing
+func estimatePotentialSavings(info *WarehouseProvisioningInfo) float64 {
+	if !info.IsOverProvisioned || info.RecommendedSize == info.Size {
+		return 0
+	}
+
+	currentSizeScore := getWarehouseSizeScore(info.Size)
+	recommendedSizeScore := getWarehouseSizeScore(info.RecommendedSize)
+
+	// Estimate savings as the cost reduction from smaller warehouse
+	if recommendedSizeScore < currentSizeScore && info.TotalCost > 0 {
+		savingsRatio := (currentSizeScore - recommendedSizeScore) / currentSizeScore
+		return info.TotalCost * savingsRatio
+	}
+
+	return 0
+}
+
+// generateProvisioningFindings creates audit findings for provisioning mismatches
+func generateProvisioningFindings(provisioningInfo map[string]*WarehouseProvisioningInfo, settings WarehouseAuditSettings) []domain.AuditFinding {
+	var findings []domain.AuditFinding
+
+	for warehouseID, info := range provisioningInfo {
+		// Skip warehouses with insufficient query activity
+		if info.QueryCount < settings.MinQueryCountThreshold {
+			continue
+		}
+
+		// Generate finding for over-provisioned warehouses
+		if info.IsOverProvisioned {
+			description := fmt.Sprintf("Warehouse appears over-provisioned: %s size with %.1f average query complexity score and %.0f%% resource utilization",
+				info.Size, info.QueryComplexityScore, info.AvgResourceUtilization*100)
+
+			if info.QueryCount > 0 {
+				description += fmt.Sprintf(" (%d queries analyzed)", info.QueryCount)
+			}
+
+			recommendation := fmt.Sprintf("Consider downsizing to %s to optimize costs", info.RecommendedSize)
+			if info.PotentialSavings > 0 {
+				recommendation += fmt.Sprintf(". Potential savings: %.2f %s", info.PotentialSavings, info.Currency)
+			}
+
+			findings = append(findings, domain.AuditFinding{
+				Id: fmt.Sprintf("%s_over_provisioned", warehouseID),
+				Resource: domain.ResourceDef{
+					Platform: "Databricks",
+					Service:  "warehouse",
+					Name:     warehouseID,
+				},
+				Issue:          "over_provisioned",
+				Description:    description,
+				Recommendation: recommendation,
+				Severity:       domain.SeverityMedium,
+			})
+		}
+
+		// Generate finding for under-provisioned warehouses
+		if info.IsUnderProvisioned {
+			description := fmt.Sprintf("Warehouse may be under-provisioned: %s size with %.1f query complexity score and %.0f%% resource utilization",
+				info.Size, info.QueryComplexityScore, info.AvgResourceUtilization*100)
+
+			if info.QueryCount > 0 {
+				description += fmt.Sprintf(" (%d queries analyzed)", info.QueryCount)
+			}
+
+			recommendation := fmt.Sprintf("Consider upgrading to %s to improve performance for complex workloads", info.RecommendedSize)
+
+			findings = append(findings, domain.AuditFinding{
+				Id: fmt.Sprintf("%s_under_provisioned", warehouseID),
+				Resource: domain.ResourceDef{
+					Platform: "Databricks",
+					Service:  "warehouse",
+					Name:     warehouseID,
+				},
+				Issue:          "under_provisioned",
+				Description:    description,
+				Recommendation: recommendation,
+				Severity:       domain.SeverityMedium,
+			})
+		}
+
+		// Generate finding for warehouses running simple queries on large clusters
+		if info.QueryComplexityScore < 20 && getWarehouseSizeScore(info.Size) >= 16 { // Large or bigger
+			description := fmt.Sprintf("Large warehouse (%s) running simple queries (complexity score: %.1f)",
+				info.Size, info.QueryComplexityScore)
+
+			if info.AvgResourceUtilization < 0.5 {
+				description += fmt.Sprintf(" with low utilization (%.0f%%)", info.AvgResourceUtilization*100)
+			}
+
+			findings = append(findings, domain.AuditFinding{
+				Id: fmt.Sprintf("%s_simple_queries_large_cluster", warehouseID),
+				Resource: domain.ResourceDef{
+					Platform: "Databricks",
+					Service:  "warehouse",
+					Name:     warehouseID,
+				},
+				Issue:          "simple_queries_large_cluster",
+				Description:    description,
+				Recommendation: "Consider using a smaller warehouse for simple queries, or consolidate complex workloads to justify the large cluster size.",
+				Severity:       domain.SeverityMedium,
+			})
+		}
+	}
+
+	return findings
+}
+
+// updateProvisioningSummary updates the audit report summary with provisioning analysis results
+func updateProvisioningSummary(report *domain.AuditReport, provisioningInfo map[string]*WarehouseProvisioningInfo, settings WarehouseAuditSettings) {
+	overProvisionedCount := 0
+	underProvisionedCount := 0
+	totalPotentialSavings := 0.0
+	totalResourceUtilization := 0.0
+	warehousesAnalyzed := 0
+	var currency string
+
+	for _, info := range provisioningInfo {
+		// Only count warehouses with sufficient query activity
+		if info.QueryCount >= settings.MinQueryCountThreshold {
+			warehousesAnalyzed++
+			totalResourceUtilization += info.AvgResourceUtilization
+
+			if info.IsOverProvisioned {
+				overProvisionedCount++
+				totalPotentialSavings += info.PotentialSavings
+				if currency == "" {
+					currency = info.Currency
+				}
+			}
+
+			if info.IsUnderProvisioned {
+				underProvisionedCount++
+			}
+		}
+	}
+
+	report.Summary["over_provisioned_count"] = overProvisionedCount
+	report.Summary["under_provisioned_count"] = underProvisionedCount
+	report.Summary["warehouses_analyzed_for_provisioning"] = warehousesAnalyzed
+
+	if warehousesAnalyzed > 0 {
+		avgUtilization := totalResourceUtilization / float64(warehousesAnalyzed)
+		report.Summary["average_resource_utilization"] = fmt.Sprintf("%.1f%%", avgUtilization*100)
+	}
+
+	if totalPotentialSavings > 0 {
+		report.Summary["potential_savings_from_rightsizing"] = totalPotentialSavings
+		if currency != "" {
+			report.Summary["potential_savings_currency"] = currency
 		}
 	}
 }
