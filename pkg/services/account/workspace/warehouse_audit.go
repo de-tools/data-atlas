@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/databricks/databricks-sdk-go/service/sql"
 	"github.com/de-tools/data-atlas/pkg/models/domain"
+	"github.com/rs/zerolog/log"
 )
 
 // WarehouseAuditSettings contains configurable thresholds for warehouse audit analysis
@@ -37,19 +37,6 @@ func DefaultWarehouseAuditSettings() WarehouseAuditSettings {
 	}
 }
 
-// WarehouseMetadata represents warehouse configuration and metadata
-type WarehouseMetadata struct {
-	ID               string
-	Name             string
-	Size             sql.GetWarehouseResponseWarehouseType
-	MinNumClusters   int32
-	MaxNumClusters   int32
-	AutoStopMins     int32
-	EnableServerless bool
-	CreatedAt        time.Time
-	State            sql.State
-}
-
 // WarehouseRuntimeStats holds runtime analysis data for a warehouse
 type WarehouseRuntimeStats struct {
 	WarehouseID       string
@@ -67,8 +54,10 @@ func GetWarehouseAudit(
 	ws domain.Workspace,
 	startTime, endTime time.Time,
 	costManager CostManager,
+	explorer Explorer,
 	settings WarehouseAuditSettings,
 ) (domain.AuditReport, error) {
+	logger := log.Ctx(ctx)
 	// Initialize audit report
 	report := domain.AuditReport{
 		Workspace:    ws.Name,
@@ -115,6 +104,20 @@ func GetWarehouseAudit(
 
 	// Update summary with runtime analysis results
 	updateRuntimeSummary(&report, runtimeStats, settings)
+
+	// Analyze warehouse sizes and generate size-related findings
+	if explorer != nil {
+		sizeAnalysis, err := analyzeWarehouseSizes(ctx, records, explorer, settings)
+		if err != nil {
+			logger.Err(err).Msg("faield to run analyzeWarehouseSizes")
+		} else {
+			sizeFindings := generateSizeFindings(sizeAnalysis, settings)
+			report.Findings = append(report.Findings, sizeFindings...)
+
+			// Update summary with size analysis results
+			updateSizeSummary(&report, sizeAnalysis, settings)
+		}
+	}
 
 	return report, nil
 }
@@ -270,5 +273,247 @@ func updateRuntimeSummary(report *domain.AuditReport, warehouseStats map[string]
 
 	if totalRuntimeHours > 0 {
 		report.Summary["overall_idle_percentage"] = (totalIdleHours / totalRuntimeHours) * 100
+	}
+}
+
+// WarehouseSizeInfo represents warehouse size and configuration information
+type WarehouseSizeInfo struct {
+	WarehouseID  string
+	Name         string
+	Size         string // e.g., "2X-Small", "Small", "Medium", "Large", etc.
+	MinClusters  int
+	MaxClusters  int
+	NodeCount    int // Calculated based on size and cluster configuration
+	IsServerless bool
+	TotalCost    float64
+	UsageHours   float64
+	Currency     string
+	SizeScore    float64 // Calculated score for ranking by size
+}
+
+// analyzeWarehouseSizes extracts warehouse size information using explorer and usage records
+func analyzeWarehouseSizes(ctx context.Context, records []domain.ResourceCost, explorer Explorer, settings WarehouseAuditSettings) (map[string]*WarehouseSizeInfo, error) {
+	warehouseSizes := make(map[string]*WarehouseSizeInfo)
+
+	// Get unique warehouse IDs from usage records
+	warehouseIDs := make(map[string]bool)
+	for _, record := range records {
+		warehouseIDs[record.Resource.Name] = true
+	}
+
+	// Fetch metadata for each warehouse
+	for warehouseID := range warehouseIDs {
+		metadata, err := explorer.GetWarehouseMetadata(ctx, warehouseID)
+		if err != nil {
+			// Skip warehouses where we can't get metadata
+			continue
+		}
+
+		sizeInfo := &WarehouseSizeInfo{
+			WarehouseID:  warehouseID,
+			Name:         metadata.Name,
+			Size:         metadata.Size,
+			MinClusters:  metadata.MinNumClusters,
+			MaxClusters:  metadata.MaxNumClusters,
+			IsServerless: metadata.EnableServerless,
+		}
+
+		// Calculate node count based on size and cluster configuration
+		sizeInfo.NodeCount = calculateNodeCount(sizeInfo.Size, sizeInfo.MaxClusters)
+
+		// Calculate size score for ranking (higher score = larger warehouse)
+		sizeInfo.SizeScore = calculateSizeScore(sizeInfo.Size, sizeInfo.NodeCount, sizeInfo.MaxClusters)
+
+		warehouseSizes[warehouseID] = sizeInfo
+	}
+
+	// Accumulate cost and usage data from records
+	for _, record := range records {
+		warehouseID := record.Resource.Name
+		if sizeInfo, exists := warehouseSizes[warehouseID]; exists {
+			// Accumulate cost and usage data
+			for _, cost := range record.Costs {
+				sizeInfo.TotalCost += cost.TotalAmount
+				if sizeInfo.Currency == "" {
+					sizeInfo.Currency = cost.Currency
+				}
+			}
+
+			// Calculate usage hours
+			usageHours := record.EndTime.Sub(record.StartTime).Hours()
+			sizeInfo.UsageHours += usageHours
+		}
+	}
+
+	return warehouseSizes, nil
+}
+
+// calculateNodeCount estimates the number of nodes based on warehouse size and cluster configuration
+func calculateNodeCount(size string, maxClusters int) int {
+	// Base node count per cluster based on warehouse size
+	baseNodes := getBaseNodeCountForSize(size)
+
+	// Total nodes = base nodes per cluster * max clusters
+	if maxClusters > 0 {
+		return baseNodes * maxClusters
+	}
+
+	return baseNodes
+}
+
+// getBaseNodeCountForSize returns the base number of nodes per cluster for a given warehouse size
+func getBaseNodeCountForSize(size string) int {
+	switch size {
+	case "2X-Small":
+		return 1
+	case "X-Small":
+		return 2
+	case "Small":
+		return 4
+	case "Medium":
+		return 8
+	case "Large":
+		return 16
+	case "X-Large":
+		return 32
+	case "2X-Large":
+		return 64
+	case "3X-Large":
+		return 128
+	case "4X-Large":
+		return 256
+	default:
+		// Default to small if size is unknown
+		return 4
+	}
+}
+
+// calculateSizeScore calculates a numeric score for ranking warehouses by size
+func calculateSizeScore(size string, nodeCount, maxClusters int) float64 {
+	// Base score from warehouse size
+	baseScore := float64(getBaseNodeCountForSize(size))
+
+	// Multiply by cluster count for total capacity
+	clusterMultiplier := float64(maxClusters)
+	if clusterMultiplier == 0 {
+		clusterMultiplier = 1
+	}
+
+	return baseScore * clusterMultiplier
+}
+
+// generateSizeFindings creates audit findings for warehouse size analysis
+func generateSizeFindings(warehouseSizes map[string]*WarehouseSizeInfo, settings WarehouseAuditSettings) []domain.AuditFinding {
+	var findings []domain.AuditFinding
+
+	// Create a slice of warehouses for sorting by size
+	type warehouseRanking struct {
+		info *WarehouseSizeInfo
+		rank int
+	}
+
+	var rankings []warehouseRanking
+	for _, sizeInfo := range warehouseSizes {
+		rankings = append(rankings, warehouseRanking{info: sizeInfo})
+	}
+
+	// Sort by size score (descending - largest first)
+	for i := 0; i < len(rankings)-1; i++ {
+		for j := i + 1; j < len(rankings); j++ {
+			if rankings[i].info.SizeScore < rankings[j].info.SizeScore {
+				rankings[i], rankings[j] = rankings[j], rankings[i]
+			}
+		}
+	}
+
+	// Assign ranks and identify top largest warehouses
+	for i, ranking := range rankings {
+		ranking.rank = i + 1
+		rankings[i] = ranking
+
+		// Flag top N largest warehouses for review
+		if ranking.rank <= settings.TopLargestCount {
+			sizeInfo := ranking.info
+
+			description := fmt.Sprintf("Warehouse ranks #%d in size with %s configuration",
+				ranking.rank, sizeInfo.Size)
+
+			if sizeInfo.MaxClusters > 1 {
+				description += fmt.Sprintf(" (up to %d clusters, ~%d total nodes)",
+					sizeInfo.MaxClusters, sizeInfo.NodeCount)
+			} else {
+				description += fmt.Sprintf(" (~%d nodes)", sizeInfo.NodeCount)
+			}
+
+			if sizeInfo.TotalCost > 0 {
+				description += fmt.Sprintf(", total cost: %.2f %s", sizeInfo.TotalCost, sizeInfo.Currency)
+			}
+
+			findings = append(findings, domain.AuditFinding{
+				Id: fmt.Sprintf("%s_oversized_warehouse", sizeInfo.WarehouseID),
+				Resource: domain.ResourceDef{
+					Platform: "Databricks",
+					Service:  "warehouse",
+					Name:     sizeInfo.WarehouseID,
+				},
+				Issue:          "oversized_warehouse",
+				Description:    description,
+				Recommendation: "Review if warehouse size is appropriate for workload complexity. Consider right-sizing based on query patterns and performance requirements.",
+				Severity:       domain.SeverityMedium,
+			})
+		}
+	}
+
+	return findings
+}
+
+// updateSizeSummary updates the audit report summary with size analysis results
+func updateSizeSummary(report *domain.AuditReport, warehouseSizes map[string]*WarehouseSizeInfo, settings WarehouseAuditSettings) {
+	warehousesWithSizeIssues := 0
+	totalCostAnalyzed := 0.0
+	var currency string
+
+	// Count warehouses flagged for size review (top N largest)
+	type sizeRanking struct {
+		sizeScore float64
+		cost      float64
+		currency  string
+	}
+
+	var rankings []sizeRanking
+	for _, sizeInfo := range warehouseSizes {
+		rankings = append(rankings, sizeRanking{
+			sizeScore: sizeInfo.SizeScore,
+			cost:      sizeInfo.TotalCost,
+			currency:  sizeInfo.Currency,
+		})
+
+		totalCostAnalyzed += sizeInfo.TotalCost
+		if currency == "" {
+			currency = sizeInfo.Currency
+		}
+	}
+
+	// Sort by size score to identify top largest
+	for i := 0; i < len(rankings)-1; i++ {
+		for j := i + 1; j < len(rankings); j++ {
+			if rankings[i].sizeScore < rankings[j].sizeScore {
+				rankings[i], rankings[j] = rankings[j], rankings[i]
+			}
+		}
+	}
+
+	// Count top N as having size issues (flagged for review)
+	if len(rankings) > settings.TopLargestCount {
+		warehousesWithSizeIssues = settings.TopLargestCount
+	} else {
+		warehousesWithSizeIssues = len(rankings)
+	}
+
+	report.Summary["warehouses_with_size_issues"] = warehousesWithSizeIssues
+	report.Summary["total_cost_analyzed"] = totalCostAnalyzed
+
+	if currency != "" {
+		report.Summary["currency"] = currency
 	}
 }
