@@ -133,6 +133,8 @@ func TestGetWarehouseAudit_RuntimeDurationAnalysis(t *testing.T) {
 		mockCostManager.On("GetResourcesCost", ctx, mock.AnythingOfType("domain.WorkspaceResources"), startTime, endTime).Return(records, nil)
 		mockExplorer.On("GetWarehouseMetadata", ctx, "warehouse-1").Return(warehouse1Metadata, nil)
 		mockExplorer.On("GetWarehouseMetadata", ctx, "warehouse-2").Return(warehouse2Metadata, nil)
+		// Mock ListWarehouses for stale resource analysis
+		mockExplorer.On("ListWarehouses", ctx).Return([]domain.WarehouseMetadata{*warehouse1Metadata, *warehouse2Metadata}, nil)
 
 		report, err := GetWarehouseAudit(ctx, ws, startTime, endTime, mockCostManager, mockExplorer, settings)
 
@@ -786,6 +788,8 @@ func TestGetWarehouseAudit_BestPracticesIntegration(t *testing.T) {
 
 		mockCostManager.On("GetResourcesCost", ctx, mock.AnythingOfType("domain.WorkspaceResources"), startTime, endTime).Return(records, nil)
 		mockExplorer.On("GetWarehouseMetadata", ctx, "warehouse-1").Return(warehouseMetadata, nil)
+		// Mock ListWarehouses for stale resource analysis
+		mockExplorer.On("ListWarehouses", ctx).Return([]domain.WarehouseMetadata{*warehouseMetadata}, nil)
 
 		report, err := GetWarehouseAudit(ctx, ws, startTime, endTime, mockCostManager, mockExplorer, settings)
 
@@ -812,6 +816,400 @@ func TestGetWarehouseAudit_BestPracticesIntegration(t *testing.T) {
 			}
 		}
 		assert.True(t, hasBestPracticesFinding, "Should have best practices findings")
+
+		mockCostManager.AssertExpectations(t)
+		mockExplorer.AssertExpectations(t)
+	})
+}
+
+func TestAnalyzeStaleResources(t *testing.T) {
+	ctx := context.Background()
+	startTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endTime := time.Date(2024, 1, 8, 0, 0, 0, 0, time.UTC) // 7 days later
+	settings := DefaultWarehouseAuditSettings()
+
+	t.Run("identifies stale and orphaned warehouses correctly", func(t *testing.T) {
+		mockExplorer := new(MockExplorer)
+
+		// Mock usage records - only for active warehouse
+		records := []domain.ResourceCost{
+			{
+				StartTime: startTime,
+				EndTime:   startTime.Add(2 * time.Hour),
+				Resource: domain.ResourceDef{
+					Name: "active-warehouse",
+				},
+				Costs: []domain.CostComponent{
+					{Currency: "USD", TotalAmount: 10.0},
+				},
+			},
+		}
+
+		// Mock all warehouses from metadata (including orphaned ones)
+		allWarehouses := []domain.WarehouseMetadata{
+			{
+				ID:   "active-warehouse",
+				Name: "Active Warehouse",
+			},
+			{
+				ID:   "orphaned-warehouse",
+				Name: "Orphaned Warehouse",
+			},
+		}
+
+		mockExplorer.On("ListWarehouses", ctx).Return(allWarehouses, nil)
+		mockExplorer.On("GetWarehouseMetadata", ctx, "active-warehouse").Return(&allWarehouses[0], nil)
+		mockExplorer.On("GetWarehouseMetadata", ctx, "orphaned-warehouse").Return(&allWarehouses[1], nil)
+
+		staleAnalysis, err := analyzeStaleResources(ctx, records, mockExplorer, settings, startTime, endTime)
+
+		assert.NoError(t, err)
+		assert.Len(t, staleAnalysis, 2)
+
+		// Check active warehouse
+		activeInfo := staleAnalysis["active-warehouse"]
+		assert.Equal(t, "active-warehouse", activeInfo.WarehouseID)
+		assert.Equal(t, "Active Warehouse", activeInfo.Name)
+		assert.True(t, activeInfo.HasActivity)
+		assert.Equal(t, 1, activeInfo.QueryCount)
+		assert.False(t, activeInfo.IsOrphaned)
+		assert.False(t, activeInfo.NeverStarted)
+		assert.Equal(t, 10.0, activeInfo.TotalCost)
+
+		// Check orphaned warehouse
+		orphanedInfo := staleAnalysis["orphaned-warehouse"]
+		assert.Equal(t, "orphaned-warehouse", orphanedInfo.WarehouseID)
+		assert.Equal(t, "Orphaned Warehouse", orphanedInfo.Name)
+		assert.False(t, orphanedInfo.HasActivity)
+		assert.Equal(t, 0, orphanedInfo.QueryCount)
+		assert.True(t, orphanedInfo.IsOrphaned)
+		assert.True(t, orphanedInfo.NeverStarted)
+		assert.Equal(t, 0.0, orphanedInfo.TotalCost)
+
+		mockExplorer.AssertExpectations(t)
+	})
+
+	t.Run("handles stale warehouse detection based on time threshold", func(t *testing.T) {
+		mockExplorer := new(MockExplorer)
+
+		// Create old activity (35 days ago - exceeds 30 day threshold)
+		oldActivityTime := time.Now().AddDate(0, 0, -35)
+		records := []domain.ResourceCost{
+			{
+				StartTime: oldActivityTime,
+				EndTime:   oldActivityTime.Add(1 * time.Hour),
+				Resource: domain.ResourceDef{
+					Name: "stale-warehouse",
+				},
+				Costs: []domain.CostComponent{
+					{Currency: "USD", TotalAmount: 5.0},
+				},
+			},
+		}
+
+		warehouseMetadata := &domain.WarehouseMetadata{
+			ID:   "stale-warehouse",
+			Name: "Stale Warehouse",
+		}
+
+		mockExplorer.On("ListWarehouses", ctx).Return([]domain.WarehouseMetadata{*warehouseMetadata}, nil)
+		mockExplorer.On("GetWarehouseMetadata", ctx, "stale-warehouse").Return(warehouseMetadata, nil)
+
+		staleAnalysis, err := analyzeStaleResources(ctx, records, mockExplorer, settings, startTime, endTime)
+
+		assert.NoError(t, err)
+		assert.Len(t, staleAnalysis, 1)
+
+		staleInfo := staleAnalysis["stale-warehouse"]
+		assert.Equal(t, "stale-warehouse", staleInfo.WarehouseID)
+		assert.True(t, staleInfo.HasActivity)
+		assert.True(t, staleInfo.IsStale) // Should be marked as stale due to old activity
+		assert.GreaterOrEqual(t, staleInfo.DaysSinceActivity, settings.StaleResourceDays)
+
+		mockExplorer.AssertExpectations(t)
+	})
+}
+
+func TestGenerateStaleResourcesFindings(t *testing.T) {
+	settings := DefaultWarehouseAuditSettings()
+
+	t.Run("generates findings for various stale resource scenarios", func(t *testing.T) {
+		lastActivityTime := time.Now().AddDate(0, 0, -35) // 35 days ago
+
+		staleResourcesInfo := map[string]*WarehouseStaleResourceInfo{
+			"stale-warehouse": {
+				WarehouseID:       "stale-warehouse",
+				Name:              "Stale Warehouse",
+				LastActivityTime:  &lastActivityTime,
+				DaysSinceActivity: 35,
+				HasActivity:       true,
+				IsStale:           true,
+				IsOrphaned:        false,
+				NeverStarted:      false,
+				QueryCount:        5,
+				TotalCost:         100.0,
+				Currency:          "USD",
+			},
+			"orphaned-warehouse": {
+				WarehouseID:       "orphaned-warehouse",
+				Name:              "Orphaned Warehouse",
+				LastActivityTime:  nil,
+				DaysSinceActivity: 60,
+				HasActivity:       false,
+				IsStale:           true,
+				IsOrphaned:        true,
+				NeverStarted:      true,
+				QueryCount:        0,
+				TotalCost:         0.0,
+				Currency:          "",
+			},
+			"zero-query-warehouse": {
+				WarehouseID:       "zero-query-warehouse",
+				Name:              "Zero Query Warehouse",
+				LastActivityTime:  &lastActivityTime,
+				DaysSinceActivity: 10,
+				HasActivity:       true,
+				IsStale:           false,
+				IsOrphaned:        false,
+				NeverStarted:      false,
+				QueryCount:        0, // Has activity but no queries
+				TotalCost:         50.0,
+				UsageHours:        10.0,
+				Currency:          "USD",
+			},
+			"never-started-warehouse": {
+				WarehouseID:       "never-started-warehouse",
+				Name:              "Never Started Warehouse",
+				LastActivityTime:  nil,
+				DaysSinceActivity: 5,
+				HasActivity:       false,
+				IsStale:           false,
+				IsOrphaned:        true,
+				NeverStarted:      true,
+				QueryCount:        0,
+				TotalCost:         0.0,
+				Currency:          "",
+			},
+		}
+
+		findings := generateStaleResourcesFindings(staleResourcesInfo, settings)
+
+		// Should have findings for all problematic warehouses
+		assert.GreaterOrEqual(t, len(findings), 4)
+
+		// Check for specific finding types
+		issueTypes := make(map[string]int)
+		for _, finding := range findings {
+			issueTypes[finding.Issue]++
+		}
+
+		assert.Equal(t, 1, issueTypes["stale_warehouse"])
+		assert.Equal(t, 2, issueTypes["orphaned_warehouse"]) // orphaned-warehouse and never-started-warehouse
+		assert.Equal(t, 1, issueTypes["zero_query_activity"])
+		assert.Equal(t, 2, issueTypes["never_started"]) // orphaned-warehouse and never-started-warehouse
+
+		// Check severity levels
+		severityCount := make(map[domain.Severity]int)
+		for _, finding := range findings {
+			severityCount[finding.Severity]++
+		}
+
+		assert.Greater(t, severityCount[domain.SeverityHigh], 0)   // orphaned and never_started
+		assert.Greater(t, severityCount[domain.SeverityMedium], 0) // stale and zero_query_activity
+
+		// Verify specific finding content
+		for _, finding := range findings {
+			switch finding.Issue {
+			case "stale_warehouse":
+				assert.Contains(t, finding.Description, "35 days")
+				assert.Contains(t, finding.Description, "100.00 USD")
+				assert.Equal(t, "stale-warehouse", finding.Resource.Name)
+
+			case "orphaned_warehouse":
+				assert.Contains(t, finding.Description, "no recorded usage activity")
+				assert.True(t, finding.Resource.Name == "orphaned-warehouse" || finding.Resource.Name == "never-started-warehouse")
+
+			case "zero_query_activity":
+				assert.Contains(t, finding.Description, "no query executions")
+				assert.Contains(t, finding.Description, "10.0 hours")
+				assert.Equal(t, "zero-query-warehouse", finding.Resource.Name)
+
+			case "never_started":
+				assert.Contains(t, finding.Description, "never been started")
+				assert.True(t, finding.Resource.Name == "orphaned-warehouse" || finding.Resource.Name == "never-started-warehouse")
+			}
+		}
+	})
+}
+
+func TestUpdateStaleResourcesSummary(t *testing.T) {
+	settings := DefaultWarehouseAuditSettings()
+
+	t.Run("updates summary with stale resources analysis", func(t *testing.T) {
+		staleResourcesInfo := map[string]*WarehouseStaleResourceInfo{
+			"stale-warehouse-1": {
+				WarehouseID:  "stale-warehouse-1",
+				HasActivity:  true,
+				IsStale:      true,
+				IsOrphaned:   false,
+				NeverStarted: false,
+				QueryCount:   5,
+				TotalCost:    100.0,
+				Currency:     "USD",
+			},
+			"stale-warehouse-2": {
+				WarehouseID:  "stale-warehouse-2",
+				HasActivity:  true,
+				IsStale:      true,
+				IsOrphaned:   false,
+				NeverStarted: false,
+				QueryCount:   3,
+				TotalCost:    75.0,
+				Currency:     "USD",
+			},
+			"orphaned-warehouse": {
+				WarehouseID:  "orphaned-warehouse",
+				HasActivity:  false,
+				IsStale:      true,
+				IsOrphaned:   true,
+				NeverStarted: true,
+				QueryCount:   0,
+				TotalCost:    0.0,
+				Currency:     "",
+			},
+			"zero-query-warehouse": {
+				WarehouseID:  "zero-query-warehouse",
+				HasActivity:  true,
+				IsStale:      false,
+				IsOrphaned:   false,
+				NeverStarted: false,
+				QueryCount:   0, // Has activity but no queries
+				TotalCost:    25.0,
+				Currency:     "USD",
+			},
+		}
+
+		report := &domain.AuditReport{
+			Summary: make(map[string]any),
+			Period: domain.TimePeriod{
+				Duration: 7, // 7 day analysis period
+			},
+		}
+
+		updateStaleResourcesSummary(report, staleResourcesInfo, settings)
+
+		// Check summary fields
+		assert.Equal(t, 3, report.Summary["stale_warehouses_count"])         // 2 stale + 1 orphaned
+		assert.Equal(t, 1, report.Summary["orphaned_warehouses_count"])      // 1 orphaned
+		assert.Equal(t, 1, report.Summary["never_started_warehouses_count"]) // 1 never started
+		assert.Equal(t, 1, report.Summary["zero_query_activity_count"])      // 1 with zero queries
+		assert.Equal(t, 175.0, report.Summary["total_stale_resource_cost"])  // 100 + 75 + 0 (orphaned has no cost)
+		assert.Equal(t, "USD", report.Summary["stale_resource_currency"])
+
+		// Check potential savings calculation
+		// (175.0 / 7 days) * 30 days = 750.0
+		expectedMonthlySavings := (175.0 / 7.0) * 30.0
+		assert.InDelta(t, expectedMonthlySavings, report.Summary["potential_monthly_savings_from_stale_resources"], 0.01)
+	})
+}
+
+func TestGetWarehouseAudit_StaleResourcesIntegration(t *testing.T) {
+	ctx := context.Background()
+	ws := domain.Workspace{Name: "test-workspace"}
+	startTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endTime := time.Date(2024, 1, 8, 0, 0, 0, 0, time.UTC)
+	settings := DefaultWarehouseAuditSettings()
+
+	t.Run("includes stale resources analysis in audit report", func(t *testing.T) {
+		mockCostManager := new(MockCostManager)
+		mockExplorer := new(MockExplorer)
+
+		// Mock warehouse usage records - only for active warehouse
+		records := []domain.ResourceCost{
+			{
+				ID:        "record1",
+				StartTime: startTime,
+				EndTime:   startTime.Add(2 * time.Hour),
+				Resource: domain.ResourceDef{
+					Platform: "Databricks",
+					Service:  "warehouse",
+					Name:     "active-warehouse",
+				},
+				Costs: []domain.CostComponent{
+					{
+						Type:        "compute",
+						Value:       1.0,
+						Unit:        "hours",
+						TotalAmount: 10.0,
+						Rate:        5.0,
+						Currency:    "USD",
+					},
+				},
+			},
+		}
+
+		// Mock warehouse metadata
+		activeWarehouse := &domain.WarehouseMetadata{
+			ID:               "active-warehouse",
+			Name:             "Active Warehouse",
+			Size:             "Medium",
+			MinNumClusters:   1,
+			MaxNumClusters:   2,
+			AutoStopMins:     30,
+			EnableServerless: false,
+		}
+
+		orphanedWarehouse := &domain.WarehouseMetadata{
+			ID:               "orphaned-warehouse",
+			Name:             "Orphaned Warehouse",
+			Size:             "Small",
+			MinNumClusters:   1,
+			MaxNumClusters:   1,
+			AutoStopMins:     0,
+			EnableServerless: false,
+		}
+
+		mockCostManager.On("GetResourcesCost", ctx, mock.AnythingOfType("domain.WorkspaceResources"), startTime, endTime).Return(records, nil)
+		mockExplorer.On("GetWarehouseMetadata", ctx, "active-warehouse").Return(activeWarehouse, nil)
+		mockExplorer.On("GetWarehouseMetadata", ctx, "orphaned-warehouse").Return(orphanedWarehouse, nil)
+		// Mock ListWarehouses to return both active and orphaned warehouses
+		mockExplorer.On("ListWarehouses", ctx).Return([]domain.WarehouseMetadata{*activeWarehouse, *orphanedWarehouse}, nil)
+
+		report, err := GetWarehouseAudit(ctx, ws, startTime, endTime, mockCostManager, mockExplorer, settings)
+
+		assert.NoError(t, err)
+		assert.Equal(t, "test-workspace", report.Workspace)
+		assert.Equal(t, "warehouse", report.ResourceType)
+
+		// Check that stale resources summary fields are present
+		assert.Contains(t, report.Summary, "stale_warehouses_count")
+		assert.Contains(t, report.Summary, "orphaned_warehouses_count")
+		assert.Contains(t, report.Summary, "never_started_warehouses_count")
+		assert.Contains(t, report.Summary, "zero_query_activity_count")
+		assert.Contains(t, report.Summary, "total_stale_resource_cost")
+
+		// Check for stale resources findings
+		hasStaleResourcesFinding := false
+		for _, finding := range report.Findings {
+			if finding.Issue == "stale_warehouse" ||
+				finding.Issue == "orphaned_warehouse" ||
+				finding.Issue == "zero_query_activity" ||
+				finding.Issue == "never_started" {
+				hasStaleResourcesFinding = true
+				break
+			}
+		}
+		assert.True(t, hasStaleResourcesFinding, "Should have stale resources findings")
+
+		// Verify orphaned warehouse is detected
+		hasOrphanedFinding := false
+		for _, finding := range report.Findings {
+			if finding.Issue == "orphaned_warehouse" && finding.Resource.Name == "orphaned-warehouse" {
+				hasOrphanedFinding = true
+				break
+			}
+		}
+		assert.True(t, hasOrphanedFinding, "Should detect orphaned warehouse")
 
 		mockCostManager.AssertExpectations(t)
 		mockExplorer.AssertExpectations(t)

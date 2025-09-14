@@ -129,6 +129,18 @@ func GetWarehouseAudit(
 			// Update summary with best practices analysis results
 			updateBestPracticesSummary(&report, bestPracticesAnalysis, settings)
 		}
+
+		// Analyze stale resources and generate findings
+		staleResourcesAnalysis, err := analyzeStaleResources(ctx, records, explorer, settings, startTime, endTime)
+		if err != nil {
+			logger.Err(err).Msg("failed to run analyzeStaleResources")
+		} else {
+			staleResourcesFindings := generateStaleResourcesFindings(staleResourcesAnalysis, settings)
+			report.Findings = append(report.Findings, staleResourcesFindings...)
+
+			// Update summary with stale resources analysis results
+			updateStaleResourcesSummary(&report, staleResourcesAnalysis, settings)
+		}
 	}
 
 	return report, nil
@@ -787,5 +799,259 @@ func updateBestPracticesSummary(report *domain.AuditReport, bestPracticesInfo ma
 	if len(bestPracticesInfo) > 0 {
 		avgComplianceScore := totalComplianceScore / float64(len(bestPracticesInfo))
 		report.Summary["average_compliance_score"] = fmt.Sprintf("%.1f%%", avgComplianceScore*100)
+	}
+}
+
+// WarehouseStaleResourceInfo represents stale resource analysis information for a warehouse
+type WarehouseStaleResourceInfo struct {
+	WarehouseID       string
+	Name              string
+	LastActivityTime  *time.Time
+	CreatedTime       *time.Time
+	DaysSinceActivity int
+	DaysSinceCreation int
+	QueryCount        int
+	HasActivity       bool
+	IsStale           bool
+	IsOrphaned        bool
+	NeverStarted      bool
+	TotalCost         float64
+	UsageHours        float64
+	Currency          string
+}
+
+// analyzeStaleResources identifies warehouses with no recent activity or that are orphaned
+func analyzeStaleResources(ctx context.Context, records []domain.ResourceCost, explorer Explorer, settings WarehouseAuditSettings, startTime, endTime time.Time) (map[string]*WarehouseStaleResourceInfo, error) {
+	staleResourcesInfo := make(map[string]*WarehouseStaleResourceInfo)
+
+	// Get unique warehouse IDs from usage records
+	warehouseIDs := make(map[string]bool)
+	for _, record := range records {
+		warehouseIDs[record.Resource.Name] = true
+	}
+
+	// If we have an explorer, also get all warehouses from metadata to detect orphaned ones
+	if explorer != nil {
+		allWarehouses, err := explorer.ListWarehouses(ctx)
+		if err == nil {
+			for _, warehouse := range allWarehouses {
+				warehouseIDs[warehouse.ID] = true
+			}
+		}
+	}
+
+	// Analyze each warehouse for stale resource patterns
+	for warehouseID := range warehouseIDs {
+		info := &WarehouseStaleResourceInfo{
+			WarehouseID: warehouseID,
+			Name:        warehouseID, // Default to ID, will be updated if metadata is available
+		}
+
+		// Get warehouse metadata if explorer is available
+		if explorer != nil {
+			metadata, err := explorer.GetWarehouseMetadata(ctx, warehouseID)
+			if err == nil {
+				info.Name = metadata.Name
+				// Note: CreatedTime would need to be added to warehouse metadata
+				// For now, we'll work with what's available
+			}
+		}
+
+		staleResourcesInfo[warehouseID] = info
+	}
+
+	// Analyze usage records to determine activity patterns
+	for _, record := range records {
+		warehouseID := record.Resource.Name
+		if info, exists := staleResourcesInfo[warehouseID]; exists {
+			info.HasActivity = true
+			info.QueryCount++ // Each record represents some query activity
+
+			// Track the most recent activity time
+			if info.LastActivityTime == nil || record.EndTime.After(*info.LastActivityTime) {
+				info.LastActivityTime = &record.EndTime
+			}
+
+			// Accumulate cost and usage data
+			for _, cost := range record.Costs {
+				info.TotalCost += cost.TotalAmount
+				if info.Currency == "" {
+					info.Currency = cost.Currency
+				}
+			}
+
+			// Calculate usage hours
+			usageHours := record.EndTime.Sub(record.StartTime).Hours()
+			info.UsageHours += usageHours
+		}
+	}
+
+	// Calculate stale resource metrics
+	now := time.Now()
+	for _, info := range staleResourcesInfo {
+		// Calculate days since last activity
+		if info.LastActivityTime != nil {
+			info.DaysSinceActivity = int(now.Sub(*info.LastActivityTime).Hours() / 24)
+		} else {
+			// No activity recorded in the analysis period
+			info.DaysSinceActivity = int(now.Sub(startTime).Hours() / 24)
+		}
+
+		// Determine if warehouse is stale (no activity in the last N days)
+		info.IsStale = info.DaysSinceActivity >= settings.StaleResourceDays
+
+		// Determine if warehouse is orphaned (created but never used)
+		info.IsOrphaned = !info.HasActivity
+
+		// Determine if warehouse was never started (no usage records at all)
+		info.NeverStarted = info.QueryCount == 0 && !info.HasActivity
+	}
+
+	return staleResourcesInfo, nil
+}
+
+// generateStaleResourcesFindings creates audit findings for stale and orphaned warehouses
+func generateStaleResourcesFindings(staleResourcesInfo map[string]*WarehouseStaleResourceInfo, settings WarehouseAuditSettings) []domain.AuditFinding {
+	var findings []domain.AuditFinding
+
+	for warehouseID, info := range staleResourcesInfo {
+		// Generate finding for stale warehouses (no activity in 30+ days)
+		if info.IsStale && info.HasActivity {
+			description := fmt.Sprintf("Warehouse has not been active for %d days", info.DaysSinceActivity)
+			if info.LastActivityTime != nil {
+				description += fmt.Sprintf(" (last activity: %s)", info.LastActivityTime.Format("2006-01-02"))
+			}
+			if info.TotalCost > 0 {
+				description += fmt.Sprintf(", total cost in analysis period: %.2f %s", info.TotalCost, info.Currency)
+			}
+
+			findings = append(findings, domain.AuditFinding{
+				Id: fmt.Sprintf("%s_stale_warehouse", warehouseID),
+				Resource: domain.ResourceDef{
+					Platform: "Databricks",
+					Service:  "warehouse",
+					Name:     warehouseID,
+				},
+				Issue:          "stale_warehouse",
+				Description:    description,
+				Recommendation: "Review if this warehouse is still needed. Consider deleting unused warehouses to reduce management overhead and potential costs.",
+				Severity:       domain.SeverityMedium,
+			})
+		}
+
+		// Generate finding for orphaned warehouses (created but never used)
+		if info.IsOrphaned {
+			description := "Warehouse exists but has no recorded usage activity in the analysis period"
+			if info.DaysSinceActivity > 0 {
+				description += fmt.Sprintf(" (no activity for %d+ days)", info.DaysSinceActivity)
+			}
+
+			findings = append(findings, domain.AuditFinding{
+				Id: fmt.Sprintf("%s_orphaned_warehouse", warehouseID),
+				Resource: domain.ResourceDef{
+					Platform: "Databricks",
+					Service:  "warehouse",
+					Name:     warehouseID,
+				},
+				Issue:          "orphaned_warehouse",
+				Description:    description,
+				Recommendation: "Investigate if this warehouse was created for a specific purpose that hasn't been implemented yet, or if it can be safely deleted.",
+				Severity:       domain.SeverityHigh,
+			})
+		}
+
+		// Generate finding for warehouses with zero query activity
+		if info.QueryCount == 0 && info.HasActivity {
+			description := "Warehouse has usage records but no query executions detected"
+			if info.UsageHours > 0 {
+				description += fmt.Sprintf(" (%.1f hours of runtime without queries)", info.UsageHours)
+			}
+
+			findings = append(findings, domain.AuditFinding{
+				Id: fmt.Sprintf("%s_zero_query_activity", warehouseID),
+				Resource: domain.ResourceDef{
+					Platform: "Databricks",
+					Service:  "warehouse",
+					Name:     warehouseID,
+				},
+				Issue:          "zero_query_activity",
+				Description:    description,
+				Recommendation: "Review warehouse configuration and usage patterns. Warehouses running without executing queries may indicate misconfiguration or inefficient usage.",
+				Severity:       domain.SeverityMedium,
+			})
+		}
+
+		// Generate finding for warehouses that were created but never started
+		if info.NeverStarted {
+			description := "Warehouse was created but has never been started or used"
+
+			findings = append(findings, domain.AuditFinding{
+				Id: fmt.Sprintf("%s_never_started", warehouseID),
+				Resource: domain.ResourceDef{
+					Platform: "Databricks",
+					Service:  "warehouse",
+					Name:     warehouseID,
+				},
+				Issue:          "never_started",
+				Description:    description,
+				Recommendation: "Consider deleting this warehouse if it's not needed, or investigate why it was created but never used.",
+				Severity:       domain.SeverityHigh,
+			})
+		}
+	}
+
+	return findings
+}
+
+// updateStaleResourcesSummary updates the audit report summary with stale resources analysis results
+func updateStaleResourcesSummary(report *domain.AuditReport, staleResourcesInfo map[string]*WarehouseStaleResourceInfo, settings WarehouseAuditSettings) {
+	staleWarehousesCount := 0
+	orphanedWarehousesCount := 0
+	neverStartedCount := 0
+	zeroQueryActivityCount := 0
+	totalStaleResourceCost := 0.0
+	var currency string
+
+	for _, info := range staleResourcesInfo {
+		if info.IsStale {
+			staleWarehousesCount++
+			totalStaleResourceCost += info.TotalCost
+			if currency == "" {
+				currency = info.Currency
+			}
+		}
+
+		if info.IsOrphaned {
+			orphanedWarehousesCount++
+		}
+
+		if info.NeverStarted {
+			neverStartedCount++
+		}
+
+		if info.QueryCount == 0 && info.HasActivity {
+			zeroQueryActivityCount++
+		}
+	}
+
+	report.Summary["stale_warehouses_count"] = staleWarehousesCount
+	report.Summary["orphaned_warehouses_count"] = orphanedWarehousesCount
+	report.Summary["never_started_warehouses_count"] = neverStartedCount
+	report.Summary["zero_query_activity_count"] = zeroQueryActivityCount
+	report.Summary["total_stale_resource_cost"] = totalStaleResourceCost
+
+	if currency != "" {
+		report.Summary["stale_resource_currency"] = currency
+	}
+
+	// Calculate potential savings from stale resources
+	if totalStaleResourceCost > 0 {
+		// Estimate potential monthly savings if stale resources were removed
+		// This is a rough estimate based on the analysis period
+		analysisPeriodDays := report.Period.Duration
+		if analysisPeriodDays > 0 {
+			monthlySavings := (totalStaleResourceCost / float64(analysisPeriodDays)) * 30
+			report.Summary["potential_monthly_savings_from_stale_resources"] = monthlySavings
+		}
 	}
 }
