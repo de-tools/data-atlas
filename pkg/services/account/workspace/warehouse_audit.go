@@ -117,6 +117,18 @@ func GetWarehouseAudit(
 			// Update summary with size analysis results
 			updateSizeSummary(&report, sizeAnalysis, settings)
 		}
+
+		// Analyze best practices compliance and generate findings
+		bestPracticesAnalysis, err := analyzeBestPracticesCompliance(ctx, records, explorer, settings)
+		if err != nil {
+			logger.Err(err).Msg("failed to run analyzeBestPracticesCompliance")
+		} else {
+			bestPracticesFindings := generateBestPracticesFindings(bestPracticesAnalysis, settings)
+			report.Findings = append(report.Findings, bestPracticesFindings...)
+
+			// Update summary with best practices analysis results
+			updateBestPracticesSummary(&report, bestPracticesAnalysis, settings)
+		}
 	}
 
 	return report, nil
@@ -515,5 +527,265 @@ func updateSizeSummary(report *domain.AuditReport, warehouseSizes map[string]*Wa
 
 	if currency != "" {
 		report.Summary["currency"] = currency
+	}
+}
+
+// WarehouseBestPracticesInfo represents best practices compliance information for a warehouse
+type WarehouseBestPracticesInfo struct {
+	WarehouseID      string
+	Name             string
+	AutoStopMins     int
+	HasAutoStop      bool
+	EnableServerless bool
+	WarehouseType    string
+	ComplianceScore  float64
+	MissingPractices []string
+	TotalCost        float64
+	UsageHours       float64
+	Currency         string
+}
+
+// analyzeBestPracticesCompliance evaluates warehouse configurations against best practices
+func analyzeBestPracticesCompliance(ctx context.Context, records []domain.ResourceCost, explorer Explorer, settings WarehouseAuditSettings) (map[string]*WarehouseBestPracticesInfo, error) {
+	bestPracticesInfo := make(map[string]*WarehouseBestPracticesInfo)
+
+	// Get unique warehouse IDs from usage records
+	warehouseIDs := make(map[string]bool)
+	for _, record := range records {
+		warehouseIDs[record.Resource.Name] = true
+	}
+
+	// Fetch metadata for each warehouse and analyze best practices
+	for warehouseID := range warehouseIDs {
+		metadata, err := explorer.GetWarehouseMetadata(ctx, warehouseID)
+		if err != nil {
+			// Skip warehouses where we can't get metadata
+			continue
+		}
+
+		info := &WarehouseBestPracticesInfo{
+			WarehouseID:      warehouseID,
+			Name:             metadata.Name,
+			AutoStopMins:     metadata.AutoStopMins,
+			HasAutoStop:      metadata.AutoStopMins > 0,
+			EnableServerless: metadata.EnableServerless,
+			WarehouseType:    metadata.Size, // Using Size as warehouse type for now
+			MissingPractices: []string{},
+		}
+
+		// Evaluate best practices compliance
+		evaluateBestPractices(info)
+
+		bestPracticesInfo[warehouseID] = info
+	}
+
+	// Accumulate cost and usage data from records
+	for _, record := range records {
+		warehouseID := record.Resource.Name
+		if info, exists := bestPracticesInfo[warehouseID]; exists {
+			// Accumulate cost and usage data
+			for _, cost := range record.Costs {
+				info.TotalCost += cost.TotalAmount
+				if info.Currency == "" {
+					info.Currency = cost.Currency
+				}
+			}
+
+			// Calculate usage hours
+			usageHours := record.EndTime.Sub(record.StartTime).Hours()
+			info.UsageHours += usageHours
+		}
+	}
+
+	return bestPracticesInfo, nil
+}
+
+// evaluateBestPractices calculates compliance score and identifies missing best practices
+func evaluateBestPractices(info *WarehouseBestPracticesInfo) {
+	totalPractices := 0
+	compliantPractices := 0
+
+	// Check auto-stop configuration
+	totalPractices++
+	if info.HasAutoStop {
+		compliantPractices++
+		// Check if auto-stop timeout is reasonable (not too high)
+		if info.AutoStopMins > 120 { // More than 2 hours
+			info.MissingPractices = append(info.MissingPractices, "auto_stop_timeout_too_high")
+		}
+	} else {
+		info.MissingPractices = append(info.MissingPractices, "auto_stop_disabled")
+	}
+
+	// Check for serverless configuration (best practice for intermittent workloads)
+	totalPractices++
+	if info.EnableServerless {
+		compliantPractices++
+	} else {
+		// Only flag as missing if it's a Pro warehouse (serverless requires Pro)
+		if info.WarehouseType != "2X-Small" && info.WarehouseType != "X-Small" {
+			info.MissingPractices = append(info.MissingPractices, "serverless_not_enabled")
+		} else {
+			// For small warehouses, serverless might not be necessary
+			compliantPractices++
+		}
+	}
+
+	// Note: Budget alerts and spending limits are not available in the current warehouse metadata
+	// These would require additional API calls to workspace settings or billing APIs
+	// For now, we'll add placeholders that can be implemented when those APIs are available
+
+	// Placeholder for budget alerts (would require additional API integration)
+	totalPractices++
+	info.MissingPractices = append(info.MissingPractices, "budget_alerts_unknown")
+
+	// Placeholder for spending limits (would require additional API integration)
+	totalPractices++
+	info.MissingPractices = append(info.MissingPractices, "spending_limits_unknown")
+
+	// Calculate compliance score
+	if totalPractices > 0 {
+		info.ComplianceScore = float64(compliantPractices) / float64(totalPractices)
+	}
+}
+
+// generateBestPracticesFindings creates audit findings for warehouses with best practices issues
+func generateBestPracticesFindings(bestPracticesInfo map[string]*WarehouseBestPracticesInfo, settings WarehouseAuditSettings) []domain.AuditFinding {
+	var findings []domain.AuditFinding
+
+	for warehouseID, info := range bestPracticesInfo {
+		// Generate findings for each missing best practice
+		for _, missingPractice := range info.MissingPractices {
+			var finding domain.AuditFinding
+
+			switch missingPractice {
+			case "auto_stop_disabled":
+				finding = domain.AuditFinding{
+					Id: fmt.Sprintf("%s_auto_stop_disabled", warehouseID),
+					Resource: domain.ResourceDef{
+						Platform: "Databricks",
+						Service:  "warehouse",
+						Name:     warehouseID,
+					},
+					Issue:          "auto_stop_disabled",
+					Description:    "Warehouse does not have auto-stop configured, which may lead to unnecessary costs from idle resources.",
+					Recommendation: "Enable auto-stop with an appropriate timeout (recommended: 10-30 minutes for interactive workloads, 60-120 minutes for batch workloads).",
+					Severity:       domain.SeverityHigh,
+				}
+
+			case "auto_stop_timeout_too_high":
+				finding = domain.AuditFinding{
+					Id: fmt.Sprintf("%s_auto_stop_timeout_too_high", warehouseID),
+					Resource: domain.ResourceDef{
+						Platform: "Databricks",
+						Service:  "warehouse",
+						Name:     warehouseID,
+					},
+					Issue:          "auto_stop_timeout_too_high",
+					Description:    fmt.Sprintf("Warehouse auto-stop timeout is set to %d minutes, which may be too high for cost optimization.", info.AutoStopMins),
+					Recommendation: "Consider reducing auto-stop timeout to 10-30 minutes for interactive workloads or 60-120 minutes for batch workloads.",
+					Severity:       domain.SeverityMedium,
+				}
+
+			case "serverless_not_enabled":
+				finding = domain.AuditFinding{
+					Id: fmt.Sprintf("%s_serverless_not_enabled", warehouseID),
+					Resource: domain.ResourceDef{
+						Platform: "Databricks",
+						Service:  "warehouse",
+						Name:     warehouseID,
+					},
+					Issue:          "serverless_not_enabled",
+					Description:    "Warehouse is not configured for serverless compute, which could provide better cost efficiency for variable workloads.",
+					Recommendation: "Consider enabling serverless compute for better cost optimization, especially for intermittent or unpredictable workloads.",
+					Severity:       domain.SeverityLow,
+				}
+
+			case "budget_alerts_unknown":
+				finding = domain.AuditFinding{
+					Id: fmt.Sprintf("%s_budget_alerts_unknown", warehouseID),
+					Resource: domain.ResourceDef{
+						Platform: "Databricks",
+						Service:  "warehouse",
+						Name:     warehouseID,
+					},
+					Issue:          "budget_alerts_unknown",
+					Description:    "Unable to verify if budget alerts are configured for this warehouse.",
+					Recommendation: "Ensure budget alerts are configured to monitor warehouse spending and prevent cost overruns.",
+					Severity:       domain.SeverityLow,
+				}
+
+			case "spending_limits_unknown":
+				finding = domain.AuditFinding{
+					Id: fmt.Sprintf("%s_spending_limits_unknown", warehouseID),
+					Resource: domain.ResourceDef{
+						Platform: "Databricks",
+						Service:  "warehouse",
+						Name:     warehouseID,
+					},
+					Issue:          "spending_limits_unknown",
+					Description:    "Unable to verify if spending limits are configured for this warehouse.",
+					Recommendation: "Consider setting spending limits to prevent unexpected cost increases and maintain budget control.",
+					Severity:       domain.SeverityLow,
+				}
+			}
+
+			if finding.Id != "" {
+				findings = append(findings, finding)
+			}
+		}
+
+		// Generate finding for overall low compliance score
+		if info.ComplianceScore < 0.5 { // Less than 50% compliance
+			findings = append(findings, domain.AuditFinding{
+				Id: fmt.Sprintf("%s_low_compliance_score", warehouseID),
+				Resource: domain.ResourceDef{
+					Platform: "Databricks",
+					Service:  "warehouse",
+					Name:     warehouseID,
+				},
+				Issue:          "low_compliance_score",
+				Description:    fmt.Sprintf("Warehouse has a low best practices compliance score of %.0f%%. Missing practices: %v", info.ComplianceScore*100, info.MissingPractices),
+				Recommendation: "Review and implement missing best practices to improve cost efficiency and governance.",
+				Severity:       domain.SeverityMedium,
+			})
+		}
+	}
+
+	return findings
+}
+
+// updateBestPracticesSummary updates the audit report summary with best practices analysis results
+func updateBestPracticesSummary(report *domain.AuditReport, bestPracticesInfo map[string]*WarehouseBestPracticesInfo, settings WarehouseAuditSettings) {
+	warehousesWithBestPracticeIssues := 0
+	totalComplianceScore := 0.0
+	warehousesWithAutoStop := 0
+	warehousesWithServerless := 0
+
+	for _, info := range bestPracticesInfo {
+		// Count warehouses with best practice issues
+		if len(info.MissingPractices) > 0 || info.ComplianceScore < 0.5 {
+			warehousesWithBestPracticeIssues++
+		}
+
+		totalComplianceScore += info.ComplianceScore
+
+		// Count specific best practices
+		if info.HasAutoStop {
+			warehousesWithAutoStop++
+		}
+		if info.EnableServerless {
+			warehousesWithServerless++
+		}
+	}
+
+	report.Summary["warehouses_with_best_practice_issues"] = warehousesWithBestPracticeIssues
+	report.Summary["warehouses_with_auto_stop"] = warehousesWithAutoStop
+	report.Summary["warehouses_with_serverless"] = warehousesWithServerless
+
+	// Calculate average compliance score
+	if len(bestPracticesInfo) > 0 {
+		avgComplianceScore := totalComplianceScore / float64(len(bestPracticesInfo))
+		report.Summary["average_compliance_score"] = fmt.Sprintf("%.1f%%", avgComplianceScore*100)
 	}
 }

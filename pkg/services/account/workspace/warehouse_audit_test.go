@@ -449,3 +449,371 @@ func TestCalculateSizeScore(t *testing.T) {
 		}
 	})
 }
+func TestAnalyzeBestPracticesCompliance(t *testing.T) {
+	ctx := context.Background()
+	startTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	settings := DefaultWarehouseAuditSettings()
+
+	t.Run("analyzes best practices compliance correctly", func(t *testing.T) {
+		mockExplorer := new(MockExplorer)
+
+		records := []domain.ResourceCost{
+			{
+				StartTime: startTime,
+				EndTime:   startTime.Add(5 * time.Hour),
+				Resource: domain.ResourceDef{
+					Name: "warehouse-compliant",
+				},
+				Costs: []domain.CostComponent{
+					{Currency: "USD", TotalAmount: 100.0},
+				},
+			},
+			{
+				StartTime: startTime.Add(6 * time.Hour),
+				EndTime:   startTime.Add(8 * time.Hour),
+				Resource: domain.ResourceDef{
+					Name: "warehouse-non-compliant",
+				},
+				Costs: []domain.CostComponent{
+					{Currency: "USD", TotalAmount: 50.0},
+				},
+			},
+		}
+
+		// Mock warehouse metadata - compliant warehouse
+		compliantMeta := &domain.WarehouseMetadata{
+			ID:               "warehouse-compliant",
+			Name:             "Compliant Warehouse",
+			Size:             "Medium",
+			AutoStopMins:     30,   // Has reasonable auto-stop
+			EnableServerless: true, // Has serverless enabled
+		}
+
+		// Mock warehouse metadata - non-compliant warehouse
+		nonCompliantMeta := &domain.WarehouseMetadata{
+			ID:               "warehouse-non-compliant",
+			Name:             "Non-Compliant Warehouse",
+			Size:             "Large",
+			AutoStopMins:     0,     // No auto-stop
+			EnableServerless: false, // No serverless
+		}
+
+		mockExplorer.On("GetWarehouseMetadata", ctx, "warehouse-compliant").Return(compliantMeta, nil)
+		mockExplorer.On("GetWarehouseMetadata", ctx, "warehouse-non-compliant").Return(nonCompliantMeta, nil)
+
+		bestPracticesAnalysis, err := analyzeBestPracticesCompliance(ctx, records, mockExplorer, settings)
+
+		assert.NoError(t, err)
+		assert.Len(t, bestPracticesAnalysis, 2)
+
+		// Check compliant warehouse
+		compliantInfo := bestPracticesAnalysis["warehouse-compliant"]
+		assert.Equal(t, "warehouse-compliant", compliantInfo.WarehouseID)
+		assert.Equal(t, "Compliant Warehouse", compliantInfo.Name)
+		assert.True(t, compliantInfo.HasAutoStop)
+		assert.True(t, compliantInfo.EnableServerless)
+		assert.Equal(t, 30, compliantInfo.AutoStopMins)
+		assert.Greater(t, compliantInfo.ComplianceScore, 0.0)
+		assert.Equal(t, 100.0, compliantInfo.TotalCost)
+
+		// Check non-compliant warehouse
+		nonCompliantInfo := bestPracticesAnalysis["warehouse-non-compliant"]
+		assert.Equal(t, "warehouse-non-compliant", nonCompliantInfo.WarehouseID)
+		assert.Equal(t, "Non-Compliant Warehouse", nonCompliantInfo.Name)
+		assert.False(t, nonCompliantInfo.HasAutoStop)
+		assert.False(t, nonCompliantInfo.EnableServerless)
+		assert.Equal(t, 0, nonCompliantInfo.AutoStopMins)
+		assert.Contains(t, nonCompliantInfo.MissingPractices, "auto_stop_disabled")
+		assert.Contains(t, nonCompliantInfo.MissingPractices, "serverless_not_enabled")
+		assert.Equal(t, 50.0, nonCompliantInfo.TotalCost)
+
+		// Non-compliant warehouse should have lower compliance score
+		assert.Less(t, nonCompliantInfo.ComplianceScore, compliantInfo.ComplianceScore)
+
+		mockExplorer.AssertExpectations(t)
+	})
+}
+
+func TestEvaluateBestPractices(t *testing.T) {
+	t.Run("evaluates best practices correctly", func(t *testing.T) {
+		testCases := []struct {
+			name                    string
+			info                    *WarehouseBestPracticesInfo
+			expectedMissingCount    int
+			expectedComplianceScore float64
+			expectedMissingPractice string
+		}{
+			{
+				name: "fully compliant warehouse",
+				info: &WarehouseBestPracticesInfo{
+					WarehouseID:      "compliant",
+					AutoStopMins:     30,
+					HasAutoStop:      true,
+					EnableServerless: true,
+					WarehouseType:    "Medium",
+				},
+				expectedMissingCount:    2,   // Only budget_alerts_unknown and spending_limits_unknown
+				expectedComplianceScore: 0.5, // 2 out of 4 practices (budget/spending unknown)
+			},
+			{
+				name: "no auto-stop warehouse",
+				info: &WarehouseBestPracticesInfo{
+					WarehouseID:      "no-autostop",
+					AutoStopMins:     0,
+					HasAutoStop:      false,
+					EnableServerless: true,
+					WarehouseType:    "Medium",
+				},
+				expectedMissingCount:    3,    // auto_stop_disabled + budget/spending unknown
+				expectedComplianceScore: 0.25, // 1 out of 4 practices
+				expectedMissingPractice: "auto_stop_disabled",
+			},
+			{
+				name: "high auto-stop timeout warehouse",
+				info: &WarehouseBestPracticesInfo{
+					WarehouseID:      "high-timeout",
+					AutoStopMins:     180, // 3 hours - too high
+					HasAutoStop:      true,
+					EnableServerless: true,
+					WarehouseType:    "Medium",
+				},
+				expectedMissingCount:    3,   // auto_stop_timeout_too_high + budget/spending unknown
+				expectedComplianceScore: 0.5, // 2 out of 4 practices
+				expectedMissingPractice: "auto_stop_timeout_too_high",
+			},
+			{
+				name: "small warehouse without serverless",
+				info: &WarehouseBestPracticesInfo{
+					WarehouseID:      "small-no-serverless",
+					AutoStopMins:     30,
+					HasAutoStop:      true,
+					EnableServerless: false,
+					WarehouseType:    "X-Small", // Small warehouse - serverless not required
+				},
+				expectedMissingCount:    2,   // Only budget/spending unknown
+				expectedComplianceScore: 0.5, // 2 out of 4 practices
+			},
+			{
+				name: "large warehouse without serverless",
+				info: &WarehouseBestPracticesInfo{
+					WarehouseID:      "large-no-serverless",
+					AutoStopMins:     30,
+					HasAutoStop:      true,
+					EnableServerless: false,
+					WarehouseType:    "Large", // Large warehouse - serverless recommended
+				},
+				expectedMissingCount:    3,    // serverless_not_enabled + budget/spending unknown
+				expectedComplianceScore: 0.25, // 1 out of 4 practices
+				expectedMissingPractice: "serverless_not_enabled",
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				evaluateBestPractices(tc.info)
+
+				assert.Len(t, tc.info.MissingPractices, tc.expectedMissingCount, "Missing practices count")
+				assert.Equal(t, tc.expectedComplianceScore, tc.info.ComplianceScore, "Compliance score")
+
+				if tc.expectedMissingPractice != "" {
+					assert.Contains(t, tc.info.MissingPractices, tc.expectedMissingPractice, "Expected missing practice")
+				}
+			})
+		}
+	})
+}
+
+func TestGenerateBestPracticesFindings(t *testing.T) {
+	settings := DefaultWarehouseAuditSettings()
+
+	t.Run("generates findings for best practices violations", func(t *testing.T) {
+		bestPracticesInfo := map[string]*WarehouseBestPracticesInfo{
+			"warehouse-no-autostop": {
+				WarehouseID:      "warehouse-no-autostop",
+				Name:             "No AutoStop Warehouse",
+				AutoStopMins:     0,
+				HasAutoStop:      false,
+				ComplianceScore:  0.25,
+				MissingPractices: []string{"auto_stop_disabled", "budget_alerts_unknown", "spending_limits_unknown"},
+			},
+			"warehouse-high-timeout": {
+				WarehouseID:      "warehouse-high-timeout",
+				Name:             "High Timeout Warehouse",
+				AutoStopMins:     180,
+				HasAutoStop:      true,
+				ComplianceScore:  0.5,
+				MissingPractices: []string{"auto_stop_timeout_too_high", "budget_alerts_unknown"},
+			},
+			"warehouse-no-serverless": {
+				WarehouseID:      "warehouse-no-serverless",
+				Name:             "No Serverless Warehouse",
+				AutoStopMins:     30,
+				HasAutoStop:      true,
+				EnableServerless: false,
+				ComplianceScore:  0.25,
+				MissingPractices: []string{"serverless_not_enabled", "budget_alerts_unknown", "spending_limits_unknown"},
+			},
+			"warehouse-low-compliance": {
+				WarehouseID:      "warehouse-low-compliance",
+				Name:             "Low Compliance Warehouse",
+				ComplianceScore:  0.25, // Below 50% threshold
+				MissingPractices: []string{"auto_stop_disabled", "serverless_not_enabled", "budget_alerts_unknown"},
+			},
+		}
+
+		findings := generateBestPracticesFindings(bestPracticesInfo, settings)
+
+		// Should have multiple findings for various best practice violations
+		assert.Greater(t, len(findings), 5)
+
+		// Check for specific finding types
+		issueTypes := make(map[string]int)
+		for _, finding := range findings {
+			issueTypes[finding.Issue]++
+		}
+
+		assert.Greater(t, issueTypes["auto_stop_disabled"], 0)
+		assert.Greater(t, issueTypes["auto_stop_timeout_too_high"], 0)
+		assert.Greater(t, issueTypes["serverless_not_enabled"], 0)
+		assert.Greater(t, issueTypes["budget_alerts_unknown"], 0)
+		assert.Greater(t, issueTypes["spending_limits_unknown"], 0)
+		assert.Greater(t, issueTypes["low_compliance_score"], 0)
+
+		// Check severity levels
+		severityCount := make(map[domain.Severity]int)
+		for _, finding := range findings {
+			severityCount[finding.Severity]++
+		}
+
+		assert.Greater(t, severityCount[domain.SeverityHigh], 0)   // auto_stop_disabled
+		assert.Greater(t, severityCount[domain.SeverityMedium], 0) // timeout_too_high, low_compliance_score
+		assert.Greater(t, severityCount[domain.SeverityLow], 0)    // serverless, budget, spending
+	})
+}
+
+func TestUpdateBestPracticesSummary(t *testing.T) {
+	settings := DefaultWarehouseAuditSettings()
+
+	t.Run("updates summary with best practices analysis", func(t *testing.T) {
+		bestPracticesInfo := map[string]*WarehouseBestPracticesInfo{
+			"warehouse-1": {
+				WarehouseID:      "warehouse-1",
+				HasAutoStop:      true,
+				EnableServerless: true,
+				ComplianceScore:  0.75,
+				MissingPractices: []string{"budget_alerts_unknown"},
+			},
+			"warehouse-2": {
+				WarehouseID:      "warehouse-2",
+				HasAutoStop:      false,
+				EnableServerless: false,
+				ComplianceScore:  0.25,
+				MissingPractices: []string{"auto_stop_disabled", "serverless_not_enabled", "budget_alerts_unknown"},
+			},
+			"warehouse-3": {
+				WarehouseID:      "warehouse-3",
+				HasAutoStop:      true,
+				EnableServerless: false,
+				ComplianceScore:  0.5,
+				MissingPractices: []string{"serverless_not_enabled", "spending_limits_unknown"},
+			},
+		}
+
+		report := &domain.AuditReport{
+			Summary: make(map[string]any),
+		}
+
+		updateBestPracticesSummary(report, bestPracticesInfo, settings)
+
+		// Check summary fields
+		assert.Equal(t, 3, report.Summary["warehouses_with_best_practice_issues"]) // All warehouses have some missing practices
+		assert.Equal(t, 2, report.Summary["warehouses_with_auto_stop"])            // warehouse-1 and warehouse-3
+		assert.Equal(t, 1, report.Summary["warehouses_with_serverless"])           // only warehouse-1
+		assert.Equal(t, "50.0%", report.Summary["average_compliance_score"])       // (0.75 + 0.25 + 0.5) / 3 = 0.5
+
+		// Verify the calculation
+		expectedAvg := (0.75 + 0.25 + 0.5) / 3.0
+		assert.Contains(t, report.Summary["average_compliance_score"], "50.0%")
+		assert.InDelta(t, expectedAvg, 0.5, 0.01)
+	})
+}
+
+func TestGetWarehouseAudit_BestPracticesIntegration(t *testing.T) {
+	ctx := context.Background()
+	ws := domain.Workspace{Name: "test-workspace"}
+	startTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endTime := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+	settings := DefaultWarehouseAuditSettings()
+
+	t.Run("includes best practices analysis in audit report", func(t *testing.T) {
+		mockCostManager := new(MockCostManager)
+		mockExplorer := new(MockExplorer)
+
+		// Mock warehouse usage records
+		records := []domain.ResourceCost{
+			{
+				ID:        "record1",
+				StartTime: startTime,
+				EndTime:   startTime.Add(2 * time.Hour),
+				Resource: domain.ResourceDef{
+					Platform: "Databricks",
+					Service:  "warehouse",
+					Name:     "warehouse-1",
+				},
+				Costs: []domain.CostComponent{
+					{
+						Type:        "compute",
+						Value:       1.0,
+						Unit:        "hours",
+						TotalAmount: 10.0,
+						Rate:        5.0,
+						Currency:    "USD",
+					},
+				},
+			},
+		}
+
+		// Mock warehouse metadata with best practices issues
+		warehouseMetadata := &domain.WarehouseMetadata{
+			ID:               "warehouse-1",
+			Name:             "Test Warehouse",
+			Size:             "Medium",
+			MinNumClusters:   1,
+			MaxNumClusters:   2,
+			AutoStopMins:     0,     // No auto-stop - should trigger finding
+			EnableServerless: false, // No serverless - should trigger finding
+		}
+
+		mockCostManager.On("GetResourcesCost", ctx, mock.AnythingOfType("domain.WorkspaceResources"), startTime, endTime).Return(records, nil)
+		mockExplorer.On("GetWarehouseMetadata", ctx, "warehouse-1").Return(warehouseMetadata, nil)
+
+		report, err := GetWarehouseAudit(ctx, ws, startTime, endTime, mockCostManager, mockExplorer, settings)
+
+		assert.NoError(t, err)
+		assert.Equal(t, "test-workspace", report.Workspace)
+		assert.Equal(t, "warehouse", report.ResourceType)
+
+		// Check that best practices summary fields are present
+		assert.Contains(t, report.Summary, "warehouses_with_best_practice_issues")
+		assert.Contains(t, report.Summary, "warehouses_with_auto_stop")
+		assert.Contains(t, report.Summary, "warehouses_with_serverless")
+		assert.Contains(t, report.Summary, "average_compliance_score")
+
+		// Check for best practices findings
+		hasBestPracticesFinding := false
+		for _, finding := range report.Findings {
+			if finding.Issue == "auto_stop_disabled" ||
+				finding.Issue == "serverless_not_enabled" ||
+				finding.Issue == "budget_alerts_unknown" ||
+				finding.Issue == "spending_limits_unknown" ||
+				finding.Issue == "low_compliance_score" {
+				hasBestPracticesFinding = true
+				break
+			}
+		}
+		assert.True(t, hasBestPracticesFinding, "Should have best practices findings")
+
+		mockCostManager.AssertExpectations(t)
+		mockExplorer.AssertExpectations(t)
+	})
+}
