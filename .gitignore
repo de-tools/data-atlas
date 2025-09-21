@@ -262,6 +262,7 @@ dist-ssr
 
 # Editor directories and files
 .vscode/*
+**/.kiro/
 !.vscode/extensions.json
 *.suo
 *.ntvs*
