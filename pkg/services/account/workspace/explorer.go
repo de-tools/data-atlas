@@ -3,6 +3,7 @@ package workspace
 import (
 	"context"
 	"fmt"
+	"github.com/de-tools/data-atlas/pkg/adapters"
 
 	"github.com/databricks/databricks-sdk-go"
 	"github.com/databricks/databricks-sdk-go/config"
@@ -58,7 +59,7 @@ func (w *workspaceExplorer) GetWarehouseMetadata(ctx context.Context, warehouseI
 		return nil, fmt.Errorf("failed to get warehouse %s: %w", warehouseID, err)
 	}
 
-	return mapEndpointInfoToWarehouseMetadata(warehouse), nil
+	return adapters.MapEndpointInfoToWarehouseMetadata(warehouse), nil
 }
 
 // ListWarehouses retrieves metadata for all warehouses in the workspace
@@ -79,24 +80,13 @@ func (w *workspaceExplorer) ListWarehouses(ctx context.Context) ([]domain.Wareho
 		if err != nil {
 			continue // Skip warehouses we can't get details for
 		}
-		result = append(result, *mapEndpointInfoToWarehouseMetadata(detailed))
+		if detailed == nil {
+			continue
+		}
+		result = append(result, *adapters.MapEndpointInfoToWarehouseMetadata(detailed))
 	}
 
 	return result, nil
-}
-
-// mapEndpointInfoToWarehouseMetadata converts Databricks SDK GetWarehouseResponse to our WarehouseMetadata
-func mapEndpointInfoToWarehouseMetadata(warehouse *sql.GetWarehouseResponse) *domain.WarehouseMetadata {
-	return &domain.WarehouseMetadata{
-		ID:               warehouse.Id,
-		Name:             warehouse.Name,
-		Size:             string(warehouse.WarehouseType),
-		State:            string(warehouse.State),
-		MinNumClusters:   int(warehouse.MinNumClusters),
-		MaxNumClusters:   int(warehouse.MaxNumClusters),
-		AutoStopMins:     int(warehouse.AutoStopMins),
-		EnableServerless: warehouse.EnableServerlessCompute,
-	}
 }
 
 func validResourceTypes(types []string) []string {
